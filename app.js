@@ -55,6 +55,7 @@ const DEFAULT_SETTINGS = {
   visitDays: [1,2,3,4,5], visitSlots: "09:00, 10:00, 11:00, 12:00, 13:00", slotCapacity: 2,
   seats: {},
   swapDates: true,
+  avgFee: "", stuckDays: 10, reportEmails: "", spend: [], stageProb: {},
   tpl: {
     "First reply": "Dear {name}, thank you for your admission enquiry{for_class} at {school}. We would be happy to share details and invite you for a school visit. When would be a convenient time to talk?",
     "No response": "Dear {name}, we tried to reach you regarding your admission enquiry at {school}. Please let us know a convenient time to call you back.",
@@ -71,7 +72,7 @@ const DEFAULT_SETTINGS = {
 let db = load();
 let local = readJSON(KEY + ".local", { syncUrl:"", session:null, me:"", lastSync:"", notifiedDay:"" });
 const ui = Object.assign({ view:"dashboard", q:"", status:"All", type:"All", stage:"", source:"", owner:"", heat:"", sort:"date-desc",
-  range:"all", calWeek:0, rep:"month", repFrom:"", repTo:"", seatYear:"", filtersOpen:false, actRange:"7", actUser:"", actType:"", actQ:"" }, readJSON(KEY + ".ui", {}));
+  range:"all", calWeek:0, rep:"month", repTab:"overview", repFrom:"", repTo:"", seatYear:"", filtersOpen:false, actRange:"7", actUser:"", actType:"", actQ:"" }, readJSON(KEY + ".ui", {}));
 let sel = new Set();
 let drawerId = null;
 let bulk = null;
@@ -94,6 +95,8 @@ function mergeSettings(s){
   const out = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), s);
   out.tpl = Object.assign({}, DEFAULT_SETTINGS.tpl, s.tpl || {});
   out.seats = Object.assign({}, s.seats || {});
+  out.spend = Array.isArray(s.spend) ? s.spend : [];
+  out.stageProb = Object.assign({}, s.stageProb || {});
   if (!Array.isArray(out.visitDays)) out.visitDays = DEFAULT_SETTINGS.visitDays.slice();
   if (out.counsellors && !/[\n|]/.test(out.counsellors) && out.counsellors.includes(",")) out.counsellors = list(out.counsellors).join("\n");
   return out;
@@ -589,8 +592,8 @@ function readWorkbook(file){
   };
   r.readAsArrayBuffer(file);
 }
-function exportRows(){
-  return db.leads.slice().sort((a, b) => a.date.localeCompare(b.date)).map((l, i) => ({
+function exportRows(leads){
+  return (leads || db.leads).slice().sort((a, b) => a.date.localeCompare(b.date)).map((l, i) => ({
     "Sl No": i + 1, "Date": l.date, "Parent Name": l.name, "Student Name": kidNames(l), "Class": classesOf(l), "Phone": fmtPhone(l.phone) || l.phoneRaw,
     "Email": l.email, "Location": l.location, "Transport": l.transport, "Enquiry Type": l.type, "Academic Year": l.academicYear,
     "Source": l.source, "Campaign": l.campaign, "Stage": l.stage, "Lead Score": heatOf(l), "Lost Reason": l.lostReason,
@@ -954,74 +957,8 @@ function renderSeats(){
   </tbody></table>`;
 }
 
-/* ----- reports ----- */
-function repRange(){
-  const t = todayISO(); const [y, m] = t.split("-").map(Number);
-  switch (ui.rep) {
-    case "week": { const ws = weekStart(0); return [ws, addDays(ws, 6)]; }
-    case "month": return [`${y}-${pad(m)}-01`, isoOf(new Date(y, m, 0))];
-    case "lastmonth": return [isoOf(new Date(y, m - 2, 1)), isoOf(new Date(y, m - 1, 0))];
-    case "30": return [addDays(t, -29), t];
-    case "custom": return [ui.repFrom || addDays(t, -29), ui.repTo || t];
-    default: return ["0000-01-01", "9999-12-31"];
-  }
-}
+/* ----- reports: see reports.js ----- */
 const tbl = (head, rows) => `<table class="rep"><thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${head.length}" class="muted">No data</td></tr>`}</tbody></table>`;
-function groupStats(L, keyFn){
-  const m = new Map();
-  for (const l of L) { const k = keyFn(l) || "(none)"; if (!m.has(k)) m.set(k, []); m.get(k).push(l); }
-  return [...m.entries()].sort((a, b) => b[1].length - a[1].length).map(([k, arr]) => {
-    const c = arr.filter(l => maxRank(l) >= 1).length, v = arr.filter(l => maxRank(l) >= 4).length, a = arr.filter(l => maxRank(l) >= 9).length;
-    return [esc(k), arr.length, `${c} <span class="muted">${pct(c, arr.length)}</span>`, `${v} <span class="muted">${pct(v, arr.length)}</span>`, a, `<b>${pct(a, arr.length)}</b>`];
-  });
-}
-function renderReports(){
-  const [from, to] = repRange();
-  const inR = d => d >= from && d <= to;
-  const L = db.leads.filter(l => inR(l.date));
-  const valid = L.filter(l => l.type === "Admission" && l.stage !== "Invalid");
-  const fc = valid.map(firstContactDays).filter(x => x != null);
-  const avgFc = fc.length ? (fc.reduce((a, b) => a + b, 0) / fc.length).toFixed(1) : "—";
-  const contacted = valid.filter(l => maxRank(l) >= 1).length;
-  const booked = valid.filter(l => maxRank(l) >= 3).length, visited = valid.filter(l => maxRank(l) >= 4).length;
-  const feePaid = valid.filter(l => maxRank(l) >= 8).length, admitted = valid.filter(l => maxRank(l) >= 9).length;
-  const acts = db.leads.flatMap(l => l.history.filter(h => h.kind === "followup" && inR(h.date)));
-  const k = (l, v) => `<div class="card kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`;
-  const people = [...staffNames(), ""];
-  const staffRows = people.map(n => {
-    const mine = valid.filter(l => (l.assignedTo || "") === n);
-    const f = mine.map(firstContactDays).filter(x => x != null);
-    const logged = acts.filter(h => (h.by || "") === n).length;
-    const a = mine.filter(l => maxRank(l) >= 9).length;
-    if (!n && !mine.length && !logged) return null;
-    return [n ? esc(n) : `<span class="muted">Unassigned / not recorded</span>`, mine.length, mine.filter(isOpen).length, logged,
-      f.length ? (f.reduce((x, y) => x + y, 0) / f.length).toFixed(1) + " d" : "—", mine.filter(l => maxRank(l) >= 4).length, a, `<b>${pct(a, mine.length)}</b>`];
-  }).filter(Boolean);
-  const lost = valid.filter(l => l.stage === "Lost" || l.stage === "Not Reachable");
-  const pr = [["week","This week"],["month","This month"],["lastmonth","Last month"],["30","Last 30 days"],["all","All time"],["custom","Custom…"]];
-  return `<div class="top"><h1>Reports</h1>
-    <select data-ui="rep" style="width:auto" class="noprint">${pr.map(([v, l]) => `<option value="${v}" ${ui.rep === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-    ${ui.rep === "custom" ? `<input type="date" data-ui="repFrom" value="${from}" style="width:auto" class="noprint"><input type="date" data-ui="repTo" value="${to}" style="width:auto" class="noprint">` : ""}
-    <button class="btn noprint" data-act="print">Print / Save PDF</button></div>
-  <div class="printhead"><b>${esc(db.settings.schoolName)}</b> – Admission enquiry report · ${ui.rep === "all" ? "All time" : `${fmtDate(from)} – ${fmtDate(to)}`}</div>
-  <div class="grid kpis">
-    ${k("Enquiries", L.length)}${k("Valid admission leads", valid.length)}${k("Job / other", L.filter(l => l.type !== "Admission").length)}
-    ${k("Invalid numbers", L.filter(l => l.stage === "Invalid").length)}${k("Contacted", `${contacted} <small class="muted">${pct(contacted, valid.length)}</small>`)}
-    ${k("Avg days to first call", avgFc)}${k("Visits booked", booked)}${k("Visited", visited)}${k("Fee paid / admitted", `${feePaid} / ${admitted}`)}
-    ${k("Enquiry → admission", pct(admitted, valid.length))}${k("Follow-ups logged", acts.length)}
-  </div>
-  <div class="grid two" style="margin-top:14px">
-    <div class="card"><h2>Conversion funnel</h2>${bars(FUNNEL.map(([lab, r]) => [lab, valid.filter(l => maxRank(l) >= r).length]), null, (k, v) => ` <span class="muted">${pct(v, valid.length)}</span>`)}</div>
-    <div class="card"><h2>Why leads were lost</h2>${bars(countBy(lost, l => l.lostReason || "Not recorded"), () => "var(--danger)")}</div>
-  </div>
-  <div class="card" style="margin-top:14px"><h2>By source</h2>${tbl(["Source","Enquiries","Contacted","Visited","Admitted","Conversion"], groupStats(valid, l => l.source))}</div>
-  <div class="card" style="margin-top:14px"><h2>By campaign</h2>${tbl(["Campaign","Enquiries","Contacted","Visited","Admitted","Conversion"], groupStats(valid.filter(l => l.campaign), l => l.campaign))}<p class="hint">Tag enquiries with a campaign name (e.g. "Nov Insta KG ad"), or give each ad its own form link / QR code from Settings.</p></div>
-  <div class="card" style="margin-top:14px"><h2>Counsellor performance</h2>${tbl(["Staff","Leads assigned","Still open","Follow-ups logged","Avg days to first call","Visited","Admitted","Conversion"], staffRows)}<p class="hint">"Follow-ups logged" counts entries made while that person was selected in "I am" (bottom-left).</p></div>
-  <div class="grid two" style="margin-top:14px">
-    <div class="card"><h2>Class demand</h2>${bars(countBy(valid, l => l.children.map(c => c.cls)))}</div>
-    <div class="card"><h2>Transport needed – by area</h2>${bars(countBy(valid.filter(l => l.transport === "Yes"), l => l.location || "Area not given"))}</div>
-  </div>`;
-}
 
 /* ----- job enquiries ----- */
 function renderJobs(){
@@ -1229,6 +1166,14 @@ function renderSettings(){
     <div class="qrbox"><div id="qr"></div><div style="flex:1;min-width:0"><div class="hint" id="qr-link" style="word-break:break-all"></div>
       <div class="acts" style="margin-top:8px"><button class="btn sm" data-act="qr-copy">Copy link</button><button class="btn sm" data-act="qr-dl">Download QR (PNG)</button><button class="btn sm" data-act="form-test">Open form</button></div></div></div>
     <p class="hint">Use a different source or campaign for each poster or ad. Reports will then show which one brings admissions. For Instagram or Facebook bios, use source "Instagram" or "Facebook".</p>
+  </div>
+  <div class="card"><h2>Reports</h2>
+    <div class="form">
+      <label>Average annual fee per child (${esc(s.currency)})<input type="number" min="0" data-set="avgFee" value="${esc(s.avgFee)}" placeholder="used for the fee forecast"></label>
+      <label>Lead is "stuck" after (days without a stage change)<input type="number" min="1" data-set="stuckDays" value="${esc(s.stuckDays)}"></label>
+      <label class="full">Weekly management report – email to (comma separated)<input type="text" data-set="reportEmails" value="${esc(s.reportEmails)}" placeholder="principal@school.com, manager@school.com">
+        <span class="hint" style="font-weight:400">Sent every Monday at 8 AM by the Google Sheet. Leave empty to send it to every Admin and Manager who has an email.</span></label>
+    </div>
   </div>
   <div class="card"><h2>Visits</h2>
     <div class="form">
@@ -1633,6 +1578,7 @@ document.addEventListener("click", async e => {
   const id = el.dataset.id, act = el.dataset.act;
   const lead = id && db.leads.find(x => x.id === id);
   if (el.tagName === "A" && el.getAttribute("href") === "#") e.preventDefault();
+  if (typeof reportAction === "function" && reportAction(act, el)) return;
   switch (act) {
     case "nav": ui.view = el.dataset.view; closeDrawer(); render(); window.scrollTo(0, 0); break;
     case "goto": Object.assign(ui, { stage: "", source: "", q: "", owner: "", heat: "" }, JSON.parse(el.dataset.f)); ui.view = "leads"; render(); break;
@@ -1756,6 +1702,7 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const el = e.target;
+  if (typeof reportChange === "function" && reportChange(el)) return;
   if (el.dataset.ui && el.dataset.ui !== "q" && el.dataset.ui !== "actQ") { ui[el.dataset.ui] = el.value; render(); return; }
   if (el.dataset.set) { db.settings[el.dataset.set] = el.type === "checkbox" ? el.checked : el.type === "number" ? +el.value : el.value; settingsChanged(); if (["counsellors", "classes", "visitSlots"].includes(el.dataset.set)) renderBadges(); }
   if (el.dataset.vday != null) { const d = +el.dataset.vday; db.settings.visitDays = el.checked ? [...new Set([...db.settings.visitDays, d])].sort() : db.settings.visitDays.filter(x => x !== d); settingsChanged(); }

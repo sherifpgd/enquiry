@@ -170,6 +170,34 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
 #qr img,#qr canvas{display:block}
 .tpl{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 .printhead{display:none}
+/* reports */
+:root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--good:#0ca30c;--bad:#d03b3b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--s1:#3987e5;--s2:#d95926;--s3:#199e70;--good:#2fbf2f;--bad:#e66767}}
+:root[data-theme="dark"]{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--good:#2fbf2f;--bad:#e66767}
+.reptabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:thin}
+.reptabs button{flex:0 0 auto;border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;color:var(--text)}
+.reptabs button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+a.dn{color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 55%,transparent);text-underline-offset:3px;text-decoration-thickness:1.5px}
+a.dn:hover{color:var(--accent)}
+.rk .dl{font-size:12px;margin-top:4px}
+.delta{font-weight:600;white-space:nowrap}
+.delta.good{color:var(--good)} .delta.bad{color:var(--bad)} .delta.flat{color:var(--muted)}
+.rc{margin-top:14px}
+.grid.two .rc{margin-top:0}
+.chart svg{width:100%;height:auto;display:block}
+.chart .cg{stroke:var(--border);stroke-width:1}
+.chart .ca{stroke:var(--muted);stroke-width:1}
+.chart .ct{fill:var(--muted);font-size:11px}
+.chart .cb:hover{opacity:.8}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+table.heatmap{border-collapse:separate;border-spacing:2px;border:0;background:none;min-width:560px}
+table.heatmap th{background:none;font-weight:500;font-size:11px;padding:2px 4px;text-align:center}
+table.heatmap td.hm{width:30px;height:26px;padding:0;text-align:center;font-size:11px;border:0;border-radius:4px}
+.hmkey{display:inline-block;width:80px;height:10px;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--s1) 18%,var(--surface)),var(--s1))}
+.probin{width:64px;padding:3px 6px}
+.printonly{display:none}
+@media print{.printonly{display:inline}.reptabs{display:none}}
 /* sign-in screen */
 .login{display:none}
 body.locked .login{display:flex;position:fixed;inset:0;z-index:40;background:var(--bg);align-items:center;justify-content:center;padding:16px;overflow:auto}
@@ -311,6 +339,7 @@ body.locked .app,body.locked .tabbar,body.locked .fab{display:none}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- seed-data.js holds your original Excel rows. It is loaded only on first run and is NOT uploaded to GitHub (see .gitignore). -->
 <script src="seed-data.js" onerror="void 0"></script>
+<script src="reports.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
