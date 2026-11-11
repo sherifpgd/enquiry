@@ -25,17 +25,22 @@ const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 /* access roles (enforced by the Google Sheet server; the app hides what a role can't use) */
 const ROLES = {
-  Admin:      ["viewAll","delete","export","import","reports","activity","assign","bulk","settings","users"],
-  Manager:    ["viewAll","delete","export","import","reports","activity","assign","bulk"],
-  Counsellor: ["reports","bulk"],
-  Reception:  ["viewAll","assign"]
+  Admin:      ["edit","viewAll","delete","export","import","reports","activity","assign","bulk","settings","users"],
+  Manager:    ["edit","viewAll","delete","export","import","reports","activity","assign","bulk"],
+  Counsellor: ["edit","reports","bulk"],
+  Reception:  ["edit","viewAll","assign"],
+  Partner:    ["viewAll","reports"]
 };
 const ROLE_INFO = {
   Admin: "Everything, including users, settings, import and delete",
   Manager: "All enquiries, reports, activity log, assign, export and delete",
   Counsellor: "Only their own and unassigned enquiries. Cannot delete or export",
-  Reception: "Capture enquiries, book visits and assign them to counsellors"
+  Reception: "Capture enquiries, book visits and assign them to counsellors",
+  Partner: "View only: see and filter all enquiries, their details and reports. Cannot add, edit, delete, message or export. Can change their own password"
 };
+// actions that change data or contact families – blocked for view-only roles
+const EDIT_ACTS = new Set(["new","paste","paste-go","edit","log","call","wa","wa-send","book","visited","noshow","snooze","stage","to-adm","to-job",
+  "mark-job","add-kid","rm-kid","delete","sel","sel-all","bulk-sel","bulk-ids","bulk-send","daily-lists","import","restore","clear-all","spend-add","spend-del"]);
 const mq = window.matchMedia("(max-width: 860px)");
 const isMobile = () => mq.matches;
 const ICON = {
@@ -55,7 +60,7 @@ const DEFAULT_SETTINGS = {
   visitDays: [1,2,3,4,5], visitSlots: "09:00, 10:00, 11:00, 12:00, 13:00", slotCapacity: 2,
   seats: {},
   swapDates: true,
-  avgFee: "", stuckDays: 10, reportEmails: "", spend: [], stageProb: {},
+  avgFee: "", stuckDays: 10, reportEmails: "", reportRecipients: [], spend: [], stageProb: {},
   tpl: {
     "First reply": "Dear {name}, thank you for your admission enquiry{for_class} at {school}. We would be happy to share details and invite you for a school visit. When would be a convenient time to talk?",
     "No response": "Dear {name}, we tried to reach you regarding your admission enquiry at {school}. Please let us know a convenient time to call you back.",
@@ -96,6 +101,8 @@ function mergeSettings(s){
   out.tpl = Object.assign({}, DEFAULT_SETTINGS.tpl, s.tpl || {});
   out.seats = Object.assign({}, s.seats || {});
   out.spend = Array.isArray(s.spend) ? s.spend : [];
+  out.reportRecipients = Array.isArray(s.reportRecipients) ? s.reportRecipients
+    : list(s.reportEmails).map(email => ({ email, freq: "weekly", sections: ["all"] }));
   out.stageProb = Object.assign({}, s.stageProb || {});
   if (!Array.isArray(out.visitDays)) out.visitDays = DEFAULT_SETTINGS.visitDays.slice();
   if (out.counsellors && !/[\n|]/.test(out.counsellors) && out.counsellors.includes(",")) out.counsellors = list(out.counsellors).join("\n");
@@ -180,7 +187,7 @@ const chip = st => `<span class="chip" style="color:${STAGE_COLOR[st]||"#64748b"
 function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2800); }
 function staff(){
   if (syncOn() && Array.isArray(db.users) && db.users.length)
-    return db.users.filter(u => u.active && u.role !== "Reception").map(u => ({ name: u.name, phone: normPhone(u.phone), email: u.email || "" }));
+    return db.users.filter(u => u.active && u.role !== "Reception" && u.role !== "Partner").map(u => ({ name: u.name, phone: normPhone(u.phone), email: u.email || "" }));
   return String(db.settings.counsellors || "").split(/\n/).map(s => s.trim()).filter(Boolean).map(line => {
     const [name, phone, email] = line.split("|").map(x => (x || "").trim());
     return { name, phone: normPhone(phone), email: email || "" };
@@ -430,6 +437,7 @@ function showLogin(mode, msg){
       <button class="btn primary big" type="submit">Sign in</button>`}
     <div class="err" id="loginerr" role="alert"></div>
     <p class="hint" style="margin-bottom:0">Forgot your password? Ask your administrator to reset it.<br>
+    <a href="manual.html" target="_blank" rel="noopener">User manual &amp; workflow</a><br>
     <a href="#" data-act="login-local">Use without the shared database (this device only)</a></p>
   </form>`;
   const f = $("#loginform");
@@ -690,6 +698,7 @@ function parseEnquiryText(txt){
    RENDERING
    ===================================================================== */
 function renderBadges(){
+  document.body.classList.toggle("readonly", !can("edit"));
   const t = todayISO();
   const due = db.leads.filter(l => isActive(l) && l.nextFollowUp && l.nextFollowUp <= t).length;
   const setB = (id, n) => { const b = $(id); if (!b) return; b.textContent = n || ""; b.style.display = n ? "" : "none"; };
@@ -719,7 +728,7 @@ function render(){
   if (drawerId) renderDrawer();
   saveUI();
 }
-const topbar = (title, extra = "") => `<div class="top"><h1>${title}</h1>${extra}<button class="btn noprint" data-act="paste">Paste${isMobile() ? "" : " enquiry"}</button><button class="btn primary noprint desk-only" data-act="new">+ New enquiry</button></div>`;
+const topbar = (title, extra = "") => `<div class="top"><h1>${title}</h1>${extra}<span class="rotag">View only</span><button class="btn noprint" data-act="paste">Paste${isMobile() ? "" : " enquiry"}</button><button class="btn primary noprint desk-only" data-act="new">+ New enquiry</button></div>`;
 function inRange(l){
   if (ui.range === "all") return true;
   const t = todayISO();
@@ -1091,8 +1100,10 @@ function moreSheet(){
   <div class="dlg-b"><div class="morelist">
     ${items.map(([v, l]) => `<button class="btn" data-act="nav-close" data-view="${v}"><span>${l}</span><span class="muted">›</span></button>`).join("")}
     <button class="btn" data-act="paste"><span>Paste an enquiry</span><span class="muted">›</span></button>
+    <a class="btn" href="manual.html" target="_blank" rel="noopener"><span>User manual &amp; workflow</span><span class="muted">↗</span></a>
   </div>
   ${syncOn() && role() === "Counsellor" ? "" : `<label class="flabel" style="margin-top:16px">Showing work for<select id="me2"><option value="">Everyone</option>${staffNames().map(n => `<option ${n === local.me ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`}
+  <label class="flabel" style="margin-top:16px">Theme${themeSelect("theme2")}</label>
   <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
     <span id="sync2" class="hint" style="display:flex;align-items:center;gap:6px">${syncLabel()}</span>
     ${syncOn() ? `<span class="acts"><button class="btn sm" data-act="sync-now">Sync now</button><button class="btn sm danger" data-act="logout">Sign out</button></span>` : ""}
@@ -1109,6 +1120,49 @@ function formLink(src, campaign){
   const q = p.toString();
   return base + (q ? (base.includes("?") ? "&" : "?") + q : "");
 }
+/* ----- light / dark theme (per device) ----- */
+const THEME_KEY = KEY + ".theme";
+function currentTheme(){ try { return localStorage.getItem(THEME_KEY) || "auto"; } catch(e){ return "auto"; } }
+function applyTheme(t){
+  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+  try { if (t === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, t); } catch(e){}
+  const dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0b1120" : "#1d4ed8");
+  document.querySelectorAll("#theme, #theme2").forEach(s => { s.value = t; });
+}
+const themeSelect = id => `<select id="${id}" aria-label="Colour theme">${[["auto", "Auto (device)"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<option value="${v}" ${currentTheme() === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+
+/* ----- report email recipients (Settings) ----- */
+const REPORT_EMAIL_SECTIONS = [["summary","Summary figures"],["followups","Follow-ups due & overdue"],["newlist","New enquiries list"],["visits","School visits"],
+  ["sources","Sources"],["counsellors","Counsellors"],["lost","Lost families"],["seats","Seats by class"],["fees","Fees & forecast"],["quality","Data quality"]];
+function reportRecipientsEditor(s){
+  const R = s.reportRecipients || [];
+  const row = (r, i) => {
+    const all = !r.sections || !r.sections.length || r.sections.includes("all");
+    return `<div class="rrow">
+      <div class="rrhead">
+        <input type="email" data-rr="email" data-i="${i}" value="${esc(r.email)}" placeholder="name@school.com" aria-label="Email address">
+        <select data-rr="freq" data-i="${i}" aria-label="How often">${[["daily","Daily (7:30 AM)"],["weekly","Weekly (Monday 8 AM)"],["both","Daily and weekly"]].map(([v, l]) => `<option value="${v}" ${r.freq === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <button class="btn sm" data-act="rr-test" data-i="${i}" ${syncOn() ? "" : "disabled title='Connect the Google Sheet first'"}>Send test</button>
+        <button class="btn sm danger" data-act="rr-del" data-i="${i}" aria-label="Remove">Remove</button>
+      </div>
+      <div class="rrsecs">
+        <label class="rrchip ${all ? "on" : ""}"><input type="checkbox" data-rr="all" data-i="${i}" ${all ? "checked" : ""}> All reports</label>
+        ${REPORT_EMAIL_SECTIONS.map(([k, l]) => `<label class="rrchip ${!all && r.sections.includes(k) ? "on" : ""} ${all ? "dim" : ""}"><input type="checkbox" data-rr="sec" data-k="${k}" data-i="${i}" ${all || r.sections.includes(k) ? "checked" : ""} ${all ? "disabled" : ""}> ${esc(l)}</label>`).join("")}
+      </div></div>`;
+  };
+  return `${R.length ? R.map(row).join("") : `<div class="empty" style="margin-bottom:10px">No report emails yet.${syncOn() ? " Until you add one, the weekly report goes to Admins and Managers who have an email." : ""}</div>`}
+    <button class="btn primary" data-act="rr-add">+ Add email</button>`;
+}
+function rrUpdate(el){
+  const R = db.settings.reportRecipients = (db.settings.reportRecipients || []).slice();
+  const i = +el.dataset.i, r = R[i] = Object.assign({ email: "", freq: "daily", sections: ["all"] }, R[i]);
+  if (el.dataset.rr === "email") r.email = el.value.trim();
+  if (el.dataset.rr === "freq") r.freq = el.value;
+  if (el.dataset.rr === "all") r.sections = el.checked ? ["all"] : REPORT_EMAIL_SECTIONS.map(x => x[0]);
+  if (el.dataset.rr === "sec") { const set = new Set(r.sections.filter(x => x !== "all")); el.checked ? set.add(el.dataset.k) : set.delete(el.dataset.k); r.sections = [...set]; }
+  settingsChanged();
+}
 function accountView(){
   return topbar("My account") + `<div class="grid two">
   <div class="card"><h2>${esc(meName())}</h2>
@@ -1122,6 +1176,10 @@ function accountView(){
     <button class="btn" data-act="notif">${"Notification" in window && Notification.permission === "granted" ? "Reminders are on ✓ (test)" : "Turn on reminders"}</button>
     <h2 style="margin-top:18px">Install on your phone</h2>
     <p class="hint">Open this page in Chrome (Android) or Safari (iPhone) and choose <b>Add to Home screen</b>.</p>
+    <h2 style="margin-top:18px">Appearance</h2>
+    <label class="hint" style="display:flex;flex-direction:column;gap:4px;max-width:240px">Theme on this device${themeSelect("theme2")}</label>
+    <h2 style="margin-top:18px">Help</h2>
+    <a class="btn" href="manual.html" target="_blank" rel="noopener">Open the user manual &amp; workflow ↗</a>
   </div></div>`;
 }
 function renderSettings(){
@@ -1171,9 +1229,11 @@ function renderSettings(){
     <div class="form">
       <label>Average annual fee per child (${esc(s.currency)})<input type="number" min="0" data-set="avgFee" value="${esc(s.avgFee)}" placeholder="used for the fee forecast"></label>
       <label>Lead is "stuck" after (days without a stage change)<input type="number" min="1" data-set="stuckDays" value="${esc(s.stuckDays)}"></label>
-      <label class="full">Weekly management report – email to (comma separated)<input type="text" data-set="reportEmails" value="${esc(s.reportEmails)}" placeholder="principal@school.com, manager@school.com">
-        <span class="hint" style="font-weight:400">Sent every Monday at 8 AM by the Google Sheet. Leave empty to send it to every Admin and Manager who has an email.</span></label>
     </div>
+  </div>
+  <div class="card" style="grid-column:1/-1"><h2>Report emails</h2>
+    <p class="hint" style="margin-top:0">The Google Sheet emails these reports automatically: <b>daily</b> at about 7:30 AM (yesterday's figures and today's lists) and/or <b>weekly</b> on Monday at 8 AM (last week vs the week before). Choose for each address which reports it gets.</p>
+    ${reportRecipientsEditor(s)}
   </div>
   <div class="card"><h2>Visits</h2>
     <div class="form">
@@ -1578,6 +1638,7 @@ document.addEventListener("click", async e => {
   const id = el.dataset.id, act = el.dataset.act;
   const lead = id && db.leads.find(x => x.id === id);
   if (el.tagName === "A" && el.getAttribute("href") === "#") e.preventDefault();
+  if (!can("edit") && EDIT_ACTS.has(act)) { e.preventDefault(); toast("Your role is view-only"); return; }
   if (typeof reportAction === "function" && reportAction(act, el)) return;
   switch (act) {
     case "nav": ui.view = el.dataset.view; closeDrawer(); render(); window.scrollTo(0, 0); break;
@@ -1680,6 +1741,15 @@ document.addEventListener("click", async e => {
       if (typeof XLSX !== "undefined") { const ws = XLSX.utils.json_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Activity"); XLSX.writeFile(wb, `activity-log-${todayISO()}.xlsx`); }
       logAct("Exported", null, `Activity log, ${rows.length} entries`); save(); break; }
     case "user-edit": userForm(el.dataset.u); break;
+    case "rr-add": db.settings.reportRecipients = [...(db.settings.reportRecipients || []), { email: "", freq: "daily", sections: ["all"] }]; settingsChanged(); render(); setTimeout(() => { const ins = document.querySelectorAll('[data-rr="email"]'); ins[ins.length - 1]?.focus(); }, 30); break;
+    case "rr-del": { const R = (db.settings.reportRecipients || []).slice(); const gone = R.splice(+el.dataset.i, 1)[0]; db.settings.reportRecipients = R; logAct("Report email removed", null, gone && gone.email); settingsChanged(); render(); break; }
+    case "rr-test": {
+      const r = (db.settings.reportRecipients || [])[+el.dataset.i];
+      if (!r || !r.email) { toast("Enter the email address first"); break; }
+      el.disabled = true; el.textContent = "Sending…";
+      try { await flush(); await api("sendTestReport", { email: r.email, freq: r.freq === "weekly" ? "weekly" : "daily", sections: r.sections }); toast(`Test report sent to ${r.email}`); logAct("Test report sent", null, r.email); save(); }
+      catch (err) { alert("Could not send: " + err.message); }
+      el.disabled = false; el.textContent = "Send test"; break; }
     case "qr-copy": { const t = $("#qr-link").textContent; if (t.startsWith("http")) navigator.clipboard?.writeText(t).then(() => toast("Link copied")); break; }
     case "qr-dl": {
       const c = $("#qr canvas"), img = $("#qr img");
@@ -1696,18 +1766,22 @@ document.addEventListener("input", e => {
   if (el.dataset.ui === "q" || el.dataset.ui === "actQ") { const k = el.dataset.ui; ui[k] = el.value; const pos = el.selectionStart; render(); const n = document.querySelector(`[data-ui="${k}"]`); if (n) { n.focus(); n.setSelectionRange(pos, pos); } return; }
   if (el.dataset.set && el.type !== "checkbox") { db.settings[el.dataset.set] = el.type === "number" ? +el.value : el.value; settingsChanged(); if (el.dataset.set === "schoolName") $("#brand").innerHTML = `${esc(el.value)}<small>Admission enquiries</small>`; if (el.dataset.set === "formUrl") drawQR(); }
   if (el.dataset.tpl) { db.settings.tpl[el.dataset.tpl] = el.value; settingsChanged(); }
+  if (el.dataset.rr === "email") rrUpdate(el);
   if (el.dataset.seat != null) { const v = parseInt(el.value, 10); if (v > 0) db.settings.seats[el.dataset.seat] = v; else delete db.settings.seats[el.dataset.seat]; settingsChanged(); }
   if (el.hasAttribute("data-bulk-text")) { bulk.text = el.value; const l = db.leads.find(x => x.id === bulk.ids[bulk.i]); $("#bulk-prev").textContent = fillTpl(bulk.text, l); }
   if (el.id === "qr-c") drawQR();
 });
 document.addEventListener("change", e => {
   const el = e.target;
+  if (!can("edit") && (el.dataset.field || el.dataset.doc || el.dataset.bulk || el.dataset.prob != null || el.dataset.seat != null)) { toast("Your role is view-only"); render(); return; }
   if (typeof reportChange === "function" && reportChange(el)) return;
+  if (el.dataset.rr) { rrUpdate(el); if (el.dataset.rr !== "email") render(); return; }
   if (el.dataset.ui && el.dataset.ui !== "q" && el.dataset.ui !== "actQ") { ui[el.dataset.ui] = el.value; render(); return; }
   if (el.dataset.set) { db.settings[el.dataset.set] = el.type === "checkbox" ? el.checked : el.type === "number" ? +el.value : el.value; settingsChanged(); if (["counsellors", "classes", "visitSlots"].includes(el.dataset.set)) renderBadges(); }
   if (el.dataset.vday != null) { const d = +el.dataset.vday; db.settings.visitDays = el.checked ? [...new Set([...db.settings.visitDays, d])].sort() : db.settings.visitDays.filter(x => x !== d); settingsChanged(); }
   if (el.dataset.seat != null) render();
   if (el.id === "qr-src") drawQR();
+  if (el.id === "theme" || el.id === "theme2") { applyTheme(el.value); return; }
   if (el.id === "me" || el.id === "me2") { local.me = el.value; saveLocal(); render(); }
   if (el.hasAttribute("data-bulk-tpl")) { bulk.tplName = el.value; bulk.text = db.settings.tpl[el.value]; renderBulk(); }
   if (el.dataset.bulk) {
@@ -1764,6 +1838,8 @@ if (!db.seeded && !db.leads.length && !syncOn() && window.SEED_SHEET) {
 }
 db.seeded = true;
 delete local.syncKey;
+applyTheme(currentTheme());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(currentTheme()));
 render();
 setSync(syncOn() ? "ok" : "local");
 if (syncOn()) { pull(true); }

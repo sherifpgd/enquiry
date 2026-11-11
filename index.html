@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Enquiries">
 <meta name="theme-color" content="#1d4ed8">
+<script>try{var t=localStorage.getItem("schoolEnquiryCRM.v1.theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -161,6 +162,13 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
 .progress{display:flex;flex-direction:column;gap:4px;justify-content:flex-end;font-size:12.5px;color:var(--muted)}
 .warnbox{background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12.5px}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .warnbox{background:#422006;color:#fcd34d}}
+/* forced dark theme (Theme: Dark) – same values as the automatic dark ones */
+:root[data-theme="dark"] .warnbox{background:#422006;color:#fcd34d}
+:root[data-theme="dark"] .heat.hot{background:#450a0a;color:#fca5a5}
+:root[data-theme="dark"] .heat.warm{background:#422006;color:#fcd34d}
+:root[data-theme="dark"] .heat.cold{background:#082f49;color:#7dd3fc}
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
 .x{border:0;background:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:10px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
@@ -170,6 +178,23 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
 #qr img,#qr canvas{display:block}
 .tpl{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 .printhead{display:none}
+.navlink{display:block;padding:8px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13.5px}
+.navlink:hover{background:var(--surface2);color:var(--text)}
+/* report email recipients */
+.rrow{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.rrhead{display:grid;grid-template-columns:2fr 1.3fr auto auto;gap:8px;align-items:center}
+.rrsecs{display:flex;flex-wrap:wrap;gap:6px}
+.rrchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;color:var(--text)}
+.rrchip input{margin:0}
+.rrchip.on{border-color:var(--accent);background:var(--accent-soft)}
+.rrchip.dim{opacity:.55}
+@media (max-width:860px){.rrhead{grid-template-columns:1fr 1fr}.rrhead input{grid-column:1/-1}}
+/* view-only roles (Partner): hide everything that adds, edits, deletes or contacts */
+body.readonly :is([data-act="new"],[data-act="paste"],[data-act="log"],[data-act="wa"],[data-act="call"],[data-act="snooze"],[data-act="book"],[data-act="visited"],[data-act="noshow"],[data-act="edit"],[data-act="delete"],[data-act="stage"],[data-act="to-adm"],[data-act="to-job"],[data-act="bulk-ids"],[data-act="bulk-sel"],[data-act="daily-lists"],[data-act="sel"],[data-act="sel-all"],[data-act="spend-add"],[data-act="spend-del"]),
+body.readonly .fab, body.readonly .bulkbar, body.readonly .mbtns, body.readonly .stagepick, body.readonly .addbk, body.readonly .probin{display:none!important}
+body.readonly #drawer :is(input,select){pointer-events:none;border-color:transparent;background:transparent;-webkit-appearance:none;appearance:none}
+.rotag{display:none}
+body.readonly .rotag{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:999px;font-size:11.5px;padding:1px 8px}
 /* reports */
 :root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--good:#0ca30c;--bad:#d03b3b}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--s1:#3987e5;--s2:#d95926;--s3:#199e70;--good:#2fbf2f;--bad:#e66767}}
@@ -309,9 +334,11 @@ body.locked .app,body.locked .tabbar,body.locked .fab{display:none}
     <button data-act="nav" data-view="activity" data-perm="activity">Activity log</button>
     <button data-act="nav" data-view="jobs">Job enquiries <span class="badge soft" id="b-job"></span></button>
     <button data-act="nav" data-view="settings">Settings</button>
+    <a class="navlink" href="manual.html" target="_blank" rel="noopener">User manual ↗</a>
     <div class="navfoot">
       <div id="who" class="hint"></div>
       <label id="me-wrap">Showing work for<select id="me"></select></label>
+      <label>Theme<select id="theme" aria-label="Colour theme"><option value="auto">Auto (device)</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <div id="sync"></div>
     </div>
   </aside>

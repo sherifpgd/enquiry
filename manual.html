@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>User Manual – Admission Enquiry Tracker</title>
+<meta name="theme-color" content="#1d4ed8">
+<script>try{var t=localStorage.getItem("schoolEnquiryCRM.v1.theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f4f6f9;--surface:#fff;--surface2:#f8fafc;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;--accent:#1d4ed8;--accent-soft:#e0e7ff;--line:#94a3b8;--tint:#eef1f5}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1120;--surface:#111a2e;--surface2:#0f172a;--text:#e2e8f0;--muted:#94a3b8;--border:#1e293b;--accent:#60a5fa;--accent-soft:#1e3a5f;--line:#64748b;--tint:#16213a}}
+:root[data-theme="dark"]{--bg:#0b1120;--surface:#111a2e;--surface2:#0f172a;--text:#e2e8f0;--muted:#94a3b8;--border:#1e293b;--accent:#60a5fa;--accent-soft:#1e3a5f;--line:#64748b;--tint:#16213a;color-scheme:dark}
+:root[data-theme="dark"] .warn{background:#422006;color:#fcd34d}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+header.bar{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px}
+header.bar b{flex:1}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:7px 12px;border-radius:8px;text-decoration:none;font-size:14px;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px;display:grid;grid-template-columns:240px 1fr;gap:28px}
+nav.toc{position:sticky;top:64px;align-self:start;max-height:calc(100vh - 80px);overflow:auto;font-size:14px}
+nav.toc a{display:block;padding:5px 10px;border-radius:6px;color:var(--text);text-decoration:none}
+nav.toc a:hover{background:var(--surface2)}
+main{min-width:0}
+h1{font-size:28px;margin:0 0 6px}
+h2{font-size:21px;margin:34px 0 10px;padding-top:6px;scroll-margin-top:70px}
+h3{font-size:16px;margin:18px 0 6px}
+.lead{font-size:17px;color:var(--muted);margin:0 0 18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:8px 0 14px;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{background:var(--surface2);color:var(--muted);font-size:13px}
+.tablewrap{overflow-x:auto}
+ol,ul{padding-left:22px}
+li{margin:3px 0}
+.tip{background:var(--accent-soft);border-radius:10px;padding:10px 14px;margin:10px 0}
+.warn{background:#fef3c7;color:#92400e;border-radius:10px;padding:10px 14px;margin:10px 0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .warn{background:#422006;color:#fcd34d}}
+kbd,.ui{font-weight:600}
+figure{margin:12px 0 6px}
+figure svg{width:100%;height:auto;display:block;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+figcaption{font-size:13px;color:var(--muted);margin-top:6px}
+.wf .b{fill:none;stroke:var(--line);stroke-width:1.25}
+.wf .acc{fill:var(--accent);fill-opacity:.12;stroke:var(--accent);stroke-width:2}
+.wf .band{fill:var(--tint);stroke:var(--line);stroke-width:1}
+.wf .c{fill:none;stroke:var(--line);stroke-width:1.25}
+.wf .n{fill:var(--text);font-weight:600;font-size:13px;text-anchor:middle}
+.wf .s{fill:var(--muted);font-size:11.5px;text-anchor:middle}
+.wf .t{fill:var(--text);font-weight:600;font-size:15px}
+.wf .q{fill:var(--muted);font-size:11.5px}
+.wf .arrowhead{fill:var(--line)}
+.roles td:first-child{font-weight:600;white-space:nowrap}
+@media (max-width:860px){.wrap{grid-template-columns:1fr}nav.toc{position:static;max-height:none;columns:2;font-size:13px}h1{font-size:23px}}
+@media print{header.bar,nav.toc{display:none}.wrap{display:block;padding:0}body{background:#fff}h2{break-after:avoid}table,figure{break-inside:avoid}}
+</style>
+</head>
+<body>
+<header class="bar"><b id="school">Admission Enquiry Tracker – User Manual</b><button class="btn" id="themebtn" type="button" aria-label="Change colour theme">Theme: Auto</button><button class="btn" onclick="print()">Print / PDF</button><a class="btn primary" href="./">Open tracker</a></header>
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <a href="#glance">At a glance</a><a href="#workflow">The admission workflow</a><a href="#start">Getting started</a><a href="#daily">Daily routine (counsellors)</a>
+  <a href="#capture">Capturing a new enquiry</a><a href="#followup">Following up</a><a href="#visits">School visits</a><a href="#admission">From visit to admission</a>
+  <a href="#closing">Closing a lead</a><a href="#reception">Reception's tasks</a><a href="#partners">Partners (view only)</a><a href="#managers">Manager and Admin tasks</a>
+  <a href="#reports">Reports</a><a href="#emails">Report emails</a><a href="#stages">Stages reference</a><a href="#faq">Problems and questions</a>
+</nav>
+<main>
+<h1>Admission Enquiry Tracker</h1>
+<p class="lead">Record every admission enquiry in one place, contact each family the same or next day, and follow them to a school visit and admission. This manual shows every role how, step by step.</p>
+
+<h2 id="glance">At a glance</h2>
+<p>Staff and partners use the <b>tracker</b>; parents use the <b>enquiry form</b>. All data lives in the school's Google Sheet and is shared live between everyone who signs in.</p>
+<div class="tablewrap"><table>
+<tr><th>What</th><th>Address</th><th>Who uses it</th></tr>
+<tr><td>Tracker</td><td><a href="./">sherifpgd.github.io/enquiry</a></td><td>Admissions staff and partners</td></tr>
+<tr><td>Parent enquiry form</td><td><a href="enquiry.html">sherifpgd.github.io/enquiry/enquiry.html</a></td><td>Parents (website, Instagram bio, QR posters)</td></tr>
+<tr><td>This manual</td><td><a href="manual.html">sherifpgd.github.io/enquiry/manual.html</a></td><td>Everyone</td></tr>
+</table></div>
+<p>Everyone signs in with their own user name and password. What you see and can do depends on your role:</p>
+<div class="tablewrap"><table class="roles">
+<tr><th>Role</th><th>Sees</th><th>Can do</th><th>Cannot do</th></tr>
+<tr><td>Admin</td><td>All enquiries</td><td>Everything: users, settings, import, export, delete, reports, activity log, report emails</td><td>–</td></tr>
+<tr><td>Manager</td><td>All enquiries</td><td>Assign, follow up, reports, activity log, export, delete</td><td>Manage users or settings</td></tr>
+<tr><td>Counsellor</td><td>Own and unassigned enquiries</td><td>Add enquiries, follow up, book visits, WhatsApp, reports on their leads</td><td>Delete, export, reassign to others</td></tr>
+<tr><td>Reception</td><td>All enquiries</td><td>Add enquiries, book visits, assign to counsellors</td><td>Delete, export, reports</td></tr>
+<tr><td>Partner</td><td>All enquiries</td><td>View, search and filter enquiries, open details, view reports, change own password</td><td>Add, edit, delete, message, export</td></tr>
+</table></div>
+<p>The menu (left on a computer, bottom bar on a phone) has <b>Dashboard</b>, <b>Follow-ups</b>, <b>All enquiries</b>, <b>Visit calendar</b>, <b>Seats</b>, <b>Reports</b>, <b>Activity log</b>, <b>Job enquiries</b>, <b>User manual</b> and <b>Settings</b>. On a phone the less-used pages are under <b>More</b>.</p>
+
+<h2 id="workflow">The admission workflow</h2>
+<figure>
+<svg class="wf" viewBox="0 0 760 466" role="img" aria-label="From enquiry to admission in eight steps; any open lead can close four ways">
+  <defs><marker id="m-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+  <text class="t" x="24" y="34">From enquiry to admission in eight steps; any open lead can close four ways</text>
+  <text class="q" x="24" y="56">Log every contact so the tracker sets the next step and date</text>
+  <g class="c">
+    <path d="M180 118H208" marker-end="url(#m-arrow)"/><path d="M364 118H392" marker-end="url(#m-arrow)"/><path d="M548 118H576" marker-end="url(#m-arrow)"/>
+    <path d="M654 146V183H102V220" marker-end="url(#m-arrow)"/>
+    <path d="M180 248H208" marker-end="url(#m-arrow)"/><path d="M364 248H392" marker-end="url(#m-arrow)"/><path d="M548 248H576" marker-end="url(#m-arrow)"/>
+    <path d="M378 282V320" stroke-dasharray="4 4" marker-end="url(#m-arrow)"/>
+  </g>
+  <text class="q" x="378" y="176" text-anchor="middle">family attends the visit</text>
+  <text class="q" x="388" y="302">a lead can close at any open step</text>
+  <rect class="b" x="24" y="90" width="156" height="56" rx="8"/><text class="n" x="102" y="114">Enquiry received</text><text class="s" x="102" y="132">form, call, WhatsApp</text>
+  <rect class="b" x="208" y="90" width="156" height="56" rx="8"/><text class="n" x="286" y="114">First contact</text><text class="s" x="286" y="132">same or next day</text>
+  <rect class="b" x="392" y="90" width="156" height="56" rx="8"/><text class="n" x="470" y="114">Interested</text><text class="s" x="470" y="132">class and needs known</text>
+  <rect class="b" x="576" y="90" width="156" height="56" rx="8"/><text class="n" x="654" y="114">Visit booked</text><text class="s" x="654" y="132">reminder day before</text>
+  <rect class="b" x="24" y="220" width="156" height="56" rx="8"/><text class="n" x="102" y="244">Visited</text><text class="s" x="102" y="262">thank-you message</text>
+  <rect class="b" x="208" y="220" width="156" height="56" rx="8"/><text class="n" x="286" y="244">Application</text><text class="s" x="286" y="262">assessment booked</text>
+  <rect class="b" x="392" y="220" width="156" height="56" rx="8"/><text class="n" x="470" y="244">Documents and fee</text><text class="s" x="470" y="262">fee amount recorded</text>
+  <rect class="acc" x="576" y="220" width="156" height="56" rx="8"/><text class="n" x="654" y="244">Admitted</text><text class="s" x="654" y="262" style="fill:var(--text)">seat confirmed</text>
+  <rect class="band" x="20" y="320" width="720" height="132" rx="8"/><text class="n" x="36" y="348" style="text-anchor:start">Closing a lead: always record the reason</text>
+  <rect class="b" x="34" y="368" width="148" height="56" rx="8"/><text class="n" x="108" y="392">Not Reachable</text><text class="s" x="108" y="410">3+ calls unanswered</text>
+  <rect class="b" x="214" y="368" width="148" height="56" rx="8"/><text class="n" x="288" y="392">Next Year</text><text class="s" x="288" y="410">messaged when open</text>
+  <rect class="b" x="398" y="368" width="148" height="56" rx="8"/><text class="n" x="472" y="392">Lost</text><text class="s" x="472" y="410">lost reason recorded</text>
+  <rect class="b" x="578" y="368" width="148" height="56" rx="8"/><text class="n" x="652" y="392">Job enquiry</text><text class="s" x="652" y="410">HR reply sent</text>
+</svg>
+<figcaption>Each enquiry moves left to right along the two top rows. The goal is a first contact the same or next day, then a school visit. A lead that cannot go further is closed with a reason.</figcaption>
+</figure>
+
+<h2 id="start">Getting started</h2>
+<p>You need three things from your administrator: your <b>user name</b>, a <b>temporary password</b> and the <b>web app address</b> (it starts with <code>https://script.google.com/macros/s/</code>). Do this once on each computer or phone:</p>
+<ol>
+<li>Open <a href="./">sherifpgd.github.io/enquiry</a> in Chrome, Edge or Safari.</li>
+<li>Go to <span class="ui">Settings → Shared database &amp; sign-in</span>, paste the web app address and tap <span class="ui">Connect</span>.</li>
+<li>Sign in with your user name and temporary password.</li>
+<li>Go to <span class="ui">Settings (My account) → Change password</span> and choose your own (8+ characters).</li>
+<li>On a computer, tap <span class="ui">Turn on reminders</span> on the Dashboard for due follow-ups and new online enquiries.</li>
+</ol>
+<p><b>Install on your phone</b> so it opens like an app: Android (Chrome) <span class="ui">⋮ → Add to Home screen</span>; iPhone (Safari) <span class="ui">Share → Add to Home Screen</span>.</p>
+<p><b>Light or dark:</b> choose <span class="ui">Theme: Auto / Light / Dark</span> at the bottom of the menu (phone: <span class="ui">More → Theme</span>). Auto follows your device. The choice is saved on that device.</p>
+<div class="warn"><b>On shared office computers, always sign out</b> (Settings or More → Sign out). Signing out removes the enquiry data from that computer. Five wrong passwords lock your user name for 15 minutes.</div>
+
+<h2 id="daily">Your daily routine (counsellors)</h2>
+<p>Every working day, clear your <b>Follow-ups</b> list from the top down and log every contact.</p>
+<h3>Morning (about 30 minutes)</h3>
+<ol>
+<li>Read the 7 AM email “Your admission follow-ups” (or open <span class="ui">Dashboard</span>).</li>
+<li>Open <span class="ui">Visit calendar → Visits today</span>: check who is coming and when.</li>
+<li>Open <span class="ui">Follow-ups → Overdue</span>: call or WhatsApp each family, then tap <span class="ui">Log follow-up</span>.</li>
+<li>Then <span class="ui">Follow-ups → Due today</span>, the same way.</li>
+</ol>
+<h3>During the day</h3>
+<ol start="5">
+<li>Contact every <b>new enquiry the same day</b> (stage “New” under Follow-ups → Due today, plus a notification if reminders are on).</li>
+<li>After each school visit, tap <span class="ui">✓ Visited</span> (or <span class="ui">No-show</span>) on the visit calendar.</li>
+<li>Record anything a parent tells you (fees, transport, siblings, curriculum) in the follow-up note.</li>
+</ol>
+<h3>Before you leave</h3>
+<ol start="8">
+<li>Open <span class="ui">Visit calendar → Visits tomorrow</span> and tap <span class="ui">Remind all</span>.</li>
+<li>Check <b>Overdue</b> is empty. If not, call those families first tomorrow.</li>
+</ol>
+<div class="tip">Three rules keep the system useful: every enquiry has a <b>next follow-up date</b>, every contact is <b>logged</b>, and every closed lead has a <b>reason</b>.</div>
+
+<h2 id="capture">Capturing a new enquiry</h2>
+<div class="tablewrap"><table>
+<tr><th>How it arrives</th><th>What you do</th><th>Time</th></tr>
+<tr><td>Phone call or walk-in</td><td><span class="ui">+ New enquiry</span> (phone: the round <b>+</b> button), fill the form</td><td>1 min</td></tr>
+<tr><td>WhatsApp, Instagram, Facebook or email</td><td>Copy the message → <span class="ui">Paste enquiry</span> → paste → <span class="ui">Read enquiry</span> → check → <span class="ui">Save</span></td><td>30 sec</td></tr>
+<tr><td>Parent fills the online form</td><td>Nothing – it appears within a minute, with an email alert</td><td>0</td></tr>
+<tr><td>Old Excel sheet</td><td>Admin: <span class="ui">Settings → Import Excel / CSV</span></td><td>once</td></tr>
+</table></div>
+<ul>
+<li><b>Phone / WhatsApp</b> is the only required field; type it any way (050…, 50…, +971…).</li>
+<li>If the number already exists, a yellow box says so: tap <span class="ui">Open existing</span> rather than creating a duplicate.</li>
+<li>Add <b>each child</b> with their class (<span class="ui">+ Add child</span> for siblings).</li>
+<li>Fill <b>Source</b>, and if known <b>Campaign</b>, <b>Area</b> and <b>Transport needed?</b> – the reports depend on them.</li>
+<li><b>Next follow-up</b> defaults to today: leave it so the family appears in today's list.</li>
+<li>A job seeker? The form warns you: tap <span class="ui">Mark as job enquiry</span>.</li>
+</ul>
+<p><b>Links and QR codes (Admin):</b> <span class="ui">Settings → Online enquiry form &amp; QR codes</span>, choose a source and campaign, then <span class="ui">Copy link</span> or <span class="ui">Download QR</span>. Use a different link or QR for every poster, banner and ad.</p>
+
+<h2 id="followup">Following up</h2>
+<p>Call or message the family, then <b>log it straight away</b>: the tracker then sets the next step for you.</p>
+<ul>
+<li><b>Call:</b> tap <span class="ui">Call</span>. On a phone it dials; the <span class="ui">Log follow-up</span> form opens for when you hang up.</li>
+<li><b>WhatsApp:</b> tap <span class="ui">WhatsApp</span>, choose a ready-made message, tap <span class="ui">Open WhatsApp</span>, press <b>Send</b> in WhatsApp, come back and save the follow-up.</li>
+<li><b>Log:</b> choose the <b>Outcome</b>, write what was said in one line, check the suggested stage and date, tap <span class="ui">Save follow-up</span>.</li>
+</ul>
+<div class="tablewrap"><table>
+<tr><th>Outcome</th><th>What the tracker does</th></tr>
+<tr><td>Answered</td><td>Stage → Contacted (if New); next follow-up in 3 days</td></tr>
+<tr><td>No answer / Busy / Switched off</td><td>Stage → No Response; next follow-up tomorrow; after 3 in a row it suggests Not Reachable</td></tr>
+<tr><td>Message sent</td><td>Next follow-up in 2 days</td></tr>
+<tr><td>Visited campus</td><td>Stage → Visited; next follow-up in 2 days</td></tr>
+<tr><td>Wrong number</td><td>Stage → Invalid; no further follow-up</td></tr>
+</table></div>
+<p><b>Lead scores</b> – <b>Hot</b>, <b>Warm</b>, <b>Cold</b> – show who to call first. Sort <span class="ui">All enquiries</span> by <span class="ui">Lead score</span>.</p>
+<p><b>Ready-made WhatsApp messages:</b> First reply, No response, Visit confirmation, Visit reminder, Thank you after visit, Documents pending, Next year, Job reply (Admin edits them in Settings).</p>
+
+<h2 id="visits">School visits</h2>
+<ol>
+<li>On a family's card tap <span class="ui">Book visit</span> (or <span class="ui">+ Book</span> in a free calendar slot).</li>
+<li>Pick date and time (full slots are marked).</li>
+<li>Keep <b>Send WhatsApp confirmation</b> ticked → <span class="ui">Book visit</span> → <span class="ui">Open WhatsApp</span>.</li>
+</ol>
+<p>The stage becomes <b>Visit Scheduled</b> and the next follow-up is the day before. <b>The day before:</b> <span class="ui">Visits tomorrow → Remind all</span>. <b>On the day:</b> <span class="ui">✓ Visited</span> or <span class="ui">No-show</span> (back to Interested, rebook today). <b>After:</b> send <i>Thank you after visit</i> and agree the next step.</p>
+
+<h2 id="admission">From visit to admission</h2>
+<p>Open the family and use the <b>Admission progress</b> box – most stage changes happen by themselves:</p>
+<div class="tablewrap"><table>
+<tr><th>You do this</th><th>Stage becomes</th></tr>
+<tr><td>Tap stage <b>Application</b> when the form is received</td><td>Application</td></tr>
+<tr><td>Enter the <b>Assessment</b> date</td><td>Assessment</td></tr>
+<tr><td>Tick each document received</td><td>Documents</td></tr>
+<tr><td>Enter the <b>Fee paid</b> date and <b>amount</b></td><td>Fee Paid</td></tr>
+<tr><td>Tap stage <b>Admitted</b> when the seat is confirmed</td><td>Admitted (closed)</td></tr>
+</table></div>
+<p>Send <i>Documents pending</i> to list what is missing. <b>Always enter the fee amount.</b> The <b>Seats</b> page shows seats, confirmed children and seats left per class (orange at 90%, red when full).</p>
+
+<h2 id="closing">Closing a lead</h2>
+<div class="tablewrap"><table>
+<tr><th>Situation</th><th>Move to</th><th>Notes</th></tr>
+<tr><td>Chose another school, fees, curriculum, distance…</td><td>Lost</td><td>You must pick a reason</td></tr>
+<tr><td>3+ unanswered calls and messages</td><td>Not Reachable</td><td>Reason “No response” is set for you</td></tr>
+<tr><td>Wants admission next year</td><td>Next Year</td><td>Set the next follow-up to when you'll check back; messaged in bulk when admissions open</td></tr>
+<tr><td>Wrong or fake number</td><td>Invalid</td><td>Outcome “Wrong number”</td></tr>
+<tr><td>Seat confirmed</td><td>Admitted</td><td></td></tr>
+</table></div>
+<p>Closed leads leave Follow-ups but stay in All enquiries and Reports. If a closed family enquires again, it reopens as <b>New</b>. <b>Job enquiries</b> go to the Job enquiries page: tap <span class="ui">HR reply</span>, and it closes.</p>
+
+<h2 id="reception">Reception's tasks</h2>
+<ol>
+<li>Every call, walk-in and message: <span class="ui">+ New enquiry</span> or <span class="ui">Paste enquiry</span>; watch for the yellow “already exists” box.</li>
+<li>Choose <b>Assigned to</b> (or leave unassigned for counsellors to pick up).</li>
+<li>Book visits for walk-ins and callers; send the confirmation.</li>
+<li>When a family arrives, tap <span class="ui">✓ Visited</span> under Visits today.</li>
+<li>Job seekers: save as a job enquiry and send the <span class="ui">HR reply</span>.</li>
+</ol>
+
+<h2 id="partners">Partners (view only)</h2>
+<p>Partners of the school can see everything but change nothing. Pages show a <b>View only</b> tag and the add, edit, delete, call and WhatsApp buttons are hidden.</p>
+<ul>
+<li><b>Find enquiries:</b> <span class="ui">All enquiries</span> → search by name, phone, area or notes, and filter by status, type, stage, source, counsellor or lead score.</li>
+<li><b>See the details:</b> tap any family to see children, classes, stage, visit, documents, fees and the full history of calls and messages.</li>
+<li><b>Reports:</b> every Reports tab and period; click underlined numbers to see the families behind them.</li>
+<li><b>Visits and seats:</b> the Visit calendar and Seats pages.</li>
+<li><b>Your password:</b> <span class="ui">Settings (My account) → Change password</span>.</li>
+</ul>
+<p>The school can also email partners a daily or weekly report with the sections they want (see <a href="#emails">Report emails</a>).</p>
+
+<h2 id="managers">Manager and Admin tasks</h2>
+<div class="tablewrap"><table>
+<tr><th>When</th><th>Task</th><th>Where</th></tr>
+<tr><td>Daily</td><td>Assign new unassigned enquiries</td><td>All enquiries → Anyone = Unassigned → tick → Assign to…</td></tr>
+<tr><td>Daily</td><td>Check overdue follow-ups per person</td><td>Reports → Follow-up speed</td></tr>
+<tr><td>Weekly</td><td>Review the weekly report with the team</td><td>Email, then Reports</td></tr>
+<tr><td>Weekly</td><td>Fix data problems</td><td>Reports → Data quality</td></tr>
+<tr><td>Monthly</td><td>Record advertising spend (Admin)</td><td>Reports → Sources &amp; cost</td></tr>
+<tr><td>Admissions open</td><td>Message the next-year pool</td><td>Reports → Next-year pool → WhatsApp all</td></tr>
+<tr><td>As needed</td><td>See who did what</td><td>Activity log</td></tr>
+</table></div>
+<p><b>Bulk WhatsApp:</b> tick families in All enquiries → <span class="ui">WhatsApp them</span> → choose a template; WhatsApp opens one chat at a time – press Send, come back, continue.</p>
+<h3>Admin only</h3>
+<ul>
+<li><b>Users:</b> <span class="ui">Settings → Users &amp; access roles → + Add user</span> (name, user name, role, WhatsApp, email, temporary password). Set <b>Disabled</b> to remove access at once. Type a new password to reset one.</li>
+<li><b>Settings:</b> school name, admission year, sources, classes, lost reasons, documents, visit slots, WhatsApp templates, fee per child, report emails.</li>
+<li><b>Data safety:</b> everything is in the Google Sheet. Download a backup monthly (<span class="ui">Settings → Download backup</span>). Never type in the Google Sheet directly.</li>
+</ul>
+
+<h2 id="reports">Reports</h2>
+<p>Pick a period, then a tab. <b>Click any underlined number</b> to see the families behind it. ▲ green / ▼ red compares with the previous period.</p>
+<div class="tablewrap"><table>
+<tr><th>Tab</th><th>Answers</th></tr>
+<tr><td>Overview</td><td>How many enquiries, visits and admissions, from which sources?</td></tr>
+<tr><td>Trends</td><td>Better than last month and last year?</td></tr>
+<tr><td>Follow-up speed</td><td>Do we call within a day? Who is overdue?</td></tr>
+<tr><td>Visits</td><td>Attended, no-shows, busiest days and times</td></tr>
+<tr><td>Pipeline speed</td><td>How long each step takes; stuck families</td></tr>
+<tr><td>Counsellors</td><td>Ranked scorecard of contacts and admissions</td></tr>
+<tr><td>Sources &amp; cost</td><td>Which advertising brings admissions, at what cost</td></tr>
+<tr><td>Fees &amp; forecast</td><td>Fees collected; expected admissions and fees</td></tr>
+<tr><td>Classes &amp; seats</td><td>Demand per class; which classes will fill</td></tr>
+<tr><td>Lost families</td><td>Why and at which step families leave</td></tr>
+<tr><td>Areas &amp; transport</td><td>Where families live; bus demand</td></tr>
+<tr><td>Next-year pool</td><td>Who is waiting for next year</td></tr>
+<tr><td>Data quality</td><td>Which records are missing information</td></tr>
+<tr><td>Enquiry timing</td><td>Which days and hours enquiries arrive</td></tr>
+</table></div>
+<p><b>Excel</b> saves the open tab, <b>All reports to Excel</b> saves every tab, <b>PDF</b> prints the open tab. (Export is for Admins and Managers.)</p>
+
+<h2 id="emails">Report emails</h2>
+<p>The Google Sheet emails reports automatically to any address the Admin adds – staff, the principal or partners. Each address chooses <b>how often</b> and <b>which reports</b>.</p>
+<ol>
+<li>Admin: <span class="ui">Settings → Report emails → + Add email</span>.</li>
+<li>Type the address and choose <b>Daily (7:30 AM)</b>, <b>Weekly (Monday 8 AM)</b> or <b>Daily and weekly</b>.</li>
+<li>Keep <b>All reports</b> ticked, or untick it and pick the sections this person needs.</li>
+<li>Tap <span class="ui">Send test</span> to check the email arrives.</li>
+</ol>
+<div class="tablewrap"><table>
+<tr><th>Section</th><th>Contains</th></tr>
+<tr><td>Summary figures</td><td>Enquiries, called within 1 day, visits, admissions, fees, follow-ups, lost – vs the previous day or week</td></tr>
+<tr><td>Follow-ups due &amp; overdue</td><td>Overdue and due-today counts per counsellor</td></tr>
+<tr><td>New enquiries list</td><td>Each new family: date, name, phone, class, source, counsellor</td></tr>
+<tr><td>School visits</td><td>Attended and no-shows, upcoming visits, today's visit list</td></tr>
+<tr><td>Sources</td><td>Enquiries, visits and admissions per source</td></tr>
+<tr><td>Counsellors</td><td>New leads, follow-ups, response speed, admissions, overdue</td></tr>
+<tr><td>Lost families</td><td>Lost reasons</td></tr>
+<tr><td>Seats by class</td><td>Seats, confirmed, expected, seats left</td></tr>
+<tr><td>Fees &amp; forecast</td><td>Fees collected; expected admissions and fees</td></tr>
+<tr><td>Data quality</td><td>Records missing key information</td></tr>
+</table></div>
+<p>Daily emails cover <b>yesterday</b> (plus today's visits and due follow-ups); weekly emails cover <b>last Monday to Sunday</b>. Counsellors also get their own 7 AM follow-up list automatically.</p>
+
+<h2 id="stages">Stages reference</h2>
+<div class="tablewrap"><table>
+<tr><th>Stage</th><th>Means</th><th>Next action</th></tr>
+<tr><td>New</td><td>Not contacted yet</td><td>Call or WhatsApp today</td></tr>
+<tr><td>No Response</td><td>Tried, no answer yet</td><td>Try tomorrow; after 3 tries → Not Reachable</td></tr>
+<tr><td>Contacted</td><td>Spoke to the family</td><td>Find class and needs; invite for a visit</td></tr>
+<tr><td>Interested</td><td>Wants to know more</td><td>Book a school visit</td></tr>
+<tr><td>Visit Scheduled</td><td>Visit booked</td><td>Reminder the day before</td></tr>
+<tr><td>Visited</td><td>Came for the visit</td><td>Thank them; push for the application</td></tr>
+<tr><td>Application</td><td>Form received</td><td>Book the assessment</td></tr>
+<tr><td>Assessment</td><td>Assessment booked or done</td><td>Collect documents</td></tr>
+<tr><td>Documents</td><td>Collecting documents</td><td>Send “Documents pending”; ask for the fee</td></tr>
+<tr><td>Fee Paid</td><td>Fee received</td><td>Confirm the seat → Admitted</td></tr>
+<tr><td>Admitted</td><td>Seat confirmed</td><td>Closed – done</td></tr>
+<tr><td>Next Year</td><td>Wants next year</td><td>Contact when admissions open</td></tr>
+<tr><td>Lost / Not Reachable / Invalid / Closed</td><td>Not joining, never answered, wrong number, job enquiry handled</td><td>Closed</td></tr>
+</table></div>
+
+<h2 id="faq">Problems and questions</h2>
+<div class="tablewrap"><table>
+<tr><th>Problem</th><th>Fix</th></tr>
+<tr><td><b>Offline · N unsent</b></td><td>No internet. Keep working; changes upload when you're back online. Don't sign out until it says <b>Synced</b>.</td></tr>
+<tr><td>“Your session has ended”</td><td>Sign in again (after 30 days, a password change, or if your account was disabled).</td></tr>
+<tr><td>“Too many wrong passwords”</td><td>Wait 15 minutes or ask the Admin to reset it.</td></tr>
+<tr><td>I can't see a family</td><td>Counsellors see only their own and unassigned leads; ask a Manager to reassign it.</td></tr>
+<tr><td>“Not allowed for your role and undone”</td><td>Your role can't make that change. Ask a Manager or the Admin.</td></tr>
+<tr><td>Buttons are missing / “View only”</td><td>You have the Partner role: you can look but not change anything.</td></tr>
+<tr><td>WhatsApp opens but nothing is sent</td><td>Press <b>Send</b> in WhatsApp.</td></tr>
+<tr><td>A report email didn't arrive</td><td>Check spam; ask the Admin to tap <b>Send test</b> for your address.</td></tr>
+<tr><td>The page looks old after an update</td><td>Close and reopen the tracker.</td></tr>
+</table></div>
+<p><b>Who to ask:</b> logins, settings and report emails – the school's tracker Admin. Assignments and reports – your Manager.</p>
+<p><b>Privacy:</b> the tracker holds parents' names and phone numbers. Don't share screenshots or exports outside the school, and always sign out on shared computers.</p>
+</main>
+</div>
+<script>
+// Theme button: Auto → Light → Dark (shared with the tracker on this device)
+(function(){
+  var KEY = "schoolEnquiryCRM.v1.theme", btn = document.getElementById("themebtn"), order = ["auto", "light", "dark"];
+  function get(){ try { return localStorage.getItem(KEY) || "auto"; } catch(e){ return "auto"; } }
+  function set(t){
+    if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+    try { t === "auto" ? localStorage.removeItem(KEY) : localStorage.setItem(KEY, t); } catch(e){}
+    btn.textContent = "Theme: " + t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  set(get());
+  btn.addEventListener("click", function(){ set(order[(order.indexOf(get()) + 1) % order.length]); });
+})();
+</script>
+</body>
+</html>
