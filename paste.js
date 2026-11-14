@@ -241,7 +241,7 @@ async function pasteFromClipboard(){
 function prefillFor(p){
   const base = { date: todayISO(), stage: "New", nextFollowUp: todayISO(), academicYear: db.settings.academicYear, assignedTo: focusName() || staffNames()[0] || "" };
   const out = Object.assign(base, p);
-  if (out.type === "Job") out.nextFollowUp = todayISO();
+  if (out.type && out.type !== "Admission") out.nextFollowUp = "";
   return out;
 }
 function pasteGo(){
@@ -324,7 +324,7 @@ function createLeadFromParsed(p){
   }
   const nl = migrateLead({ id: uid(), createdAt: p._at || now, date: p.date || t, name: p.name || "", email: p.email || "", phone, phoneRaw: p.phone,
     children, academicYear: p.academicYear || db.settings.academicYear, location: p.location || "", transport: p.transport || "", source: p.source || "WhatsApp",
-    campaign: p.campaign || "", type: p.type || "Admission", assignedTo: focusName() || staffNames()[0] || "", stage: "New", nextFollowUp: t,
+    campaign: p.campaign || "", type: p.type || "Admission", assignedTo: focusName() || staffNames()[0] || "", stage: "New", nextFollowUp: (p.type || "Admission") === "Admission" ? t : "",
     notes: p.notes || "", history: [{ id: uid(), at: now, date: p.date || t, kind: "note", by: meName(), note: "Enquiry captured from a pasted message" }] });
   db.leads.push(nl); touch(nl);
   logAct("Enquiry added", nl, [classesOf(nl), nl.source, "pasted"].filter(Boolean).join(" · "));

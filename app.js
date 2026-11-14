@@ -39,7 +39,7 @@ const ROLE_INFO = {
   Partner: "View only: see and filter all enquiries, their details and reports. Cannot add, edit, delete, message or export. Can change their own password"
 };
 // actions that change data or contact families – blocked for view-only roles
-const EDIT_ACTS = new Set(["new","paste","paste-go","paste-clip","bulk-save","fr-send","edit","log","call","wa","wa-send","book","visited","noshow","snooze","stage","to-adm","to-job",
+const EDIT_ACTS = new Set(["new","paste","paste-go","paste-clip","bulk-save","fr-send","resched","fresched","edit","log","call","wa","wa-send","book","visited","noshow","snooze","stage","to-adm","to-job",
   "mark-job","add-kid","rm-kid","delete","sel","sel-all","bulk-sel","bulk-ids","bulk-send","daily-lists","import","restore","clear-all","spend-add","spend-del"]);
 const mq = window.matchMedia("(max-width: 860px)");
 const isMobile = () => mq.matches;
@@ -273,8 +273,10 @@ function changeStage(l, to, opts = {}){
   logAct("Stage changed", l, `${l.stage} \u2192 ${to}${opts.reason ? " (" + opts.reason + ")" : ""}`);
   l.history.push({ id: uid(), at: new Date().toISOString(), date: todayISO(), kind: "stage", stageFrom: l.stage, stageTo: to, by: meName(),
     note: `Stage: ${l.stage} → ${to}${opts.reason ? ` (${opts.reason})` : ""}` });
+  const reopened = CLOSED.has(l.stage) && !CLOSED.has(to);
   l.stage = to;
-  if (CLOSED.has(to)) l.nextFollowUp = ""; else if (!l.nextFollowUp) l.nextFollowUp = addDays(todayISO(), 2);
+  // closed → no date; a reopened admission lead gets a date in 2 days; otherwise a deliberate "Not scheduled" is kept
+  if (CLOSED.has(to) || l.type !== "Admission") l.nextFollowUp = ""; else if (reopened && !l.nextFollowUp) l.nextFollowUp = addDays(todayISO(), 2);
   if (to === "Fee Paid" && !l.feePaidDate) l.feePaidDate = todayISO();
   touch(l);
   if (!opts.silent) { save(); render(); }
@@ -646,7 +648,8 @@ function myLists(name){
     today: act.filter(l => l.nextFollowUp === t),
     visitsToday: mine.filter(l => l.stage === "Visit Scheduled" && l.visitDate === t).sort((a, b) => (a.visitTime || "").localeCompare(b.visitTime || "")),
     visitsTomorrow: mine.filter(l => l.stage === "Visit Scheduled" && l.visitDate === tm).sort((a, b) => (a.visitTime || "").localeCompare(b.visitTime || "")),
-    hot: act.filter(l => heatOf(l) === "Hot")
+    hot: act.filter(l => heatOf(l) === "Hot"),
+    toSchedule: act.filter(l => !l.nextFollowUp)
   };
 }
 function dailyText(name){
@@ -738,6 +741,7 @@ function renderDashboard(){
         <span data-act="nav" data-view="calendar"><b>${M.visitsToday.length}</b> visits today</span>
         <span data-act="nav" data-view="calendar"><b>${M.visitsTomorrow.length}</b> visits tomorrow</span>
         <span data-act="goto" data-f='{"heat":"Hot","status":"Open","type":"Admission"}'><b>${M.hot.length}</b> hot leads</span>
+        ${M.toSchedule.length ? `<span data-act="nav" data-view="followups"><b>${M.toSchedule.length}</b> to schedule</span>` : ""}
       </div></div>
     <div class="acts"><button class="btn" data-act="daily-lists">Send daily lists</button>${"Notification" in window && Notification.permission !== "granted" ? `<button class="btn" data-act="notif">Turn on reminders</button>` : ""}</div>
   </div>
@@ -773,7 +777,7 @@ function leadCard(l, extra = ""){
   return `<div class="lc">
     <div class="h"><div class="who">${avatar(l)}<div style="min-width:0"><div class="nm" data-act="open" data-id="${l.id}">${heatTag(l)} ${displayName(l)}</div>
       <div class="meta">${esc(fmtPhone(l.phone) || l.phoneRaw)}${classesOf(l) ? ` · ${esc(classesOf(l))}` : ""}${l.location ? ` · ${esc(l.location)}` : ""}${l.transport === "Yes" ? ` · 🚌` : ""}${l.assignedTo ? ` · ${esc(l.assignedTo)}` : ""}</div></div></div>${chip(l.stage)}</div>
-    <div class="meta">${isOpen(l) ? `Follow-up: ${relDue(l.nextFollowUp)}` : "Closed"}${l.visitDate ? ` · Visit: <b>${fmtDate(l.visitDate)}${l.visitTime ? " " + esc(l.visitTime) : ""}</b>` : ""} · Enquired ${fmtDate(l.date)}</div>
+    <div class="meta">${isActive(l) ? "Follow-up: " : ""}${followLabel(l)}${l.visitDate ? ` · Visit: <b>${fmtDate(l.visitDate)}${l.visitTime ? " " + esc(l.visitTime) : ""}</b>` : ""} · Enquired ${fmtDate(l.date)}</div>
     ${last ? `<div class="last"><span class="muted">${fmtDate(last.date)}:</span> ${esc([last.channel, last.outcome].filter(Boolean).join(" · "))}${last.note ? ` — ${esc(last.note)}` : ""}</div>` : ""}
     <div class="acts">${call}${wa}<button class="btn sm primary" data-act="log" data-id="${l.id}">Log follow-up</button>${extra}${isOpen(l) && l.type === "Admission" ? `<button class="btn sm" data-act="snooze" data-id="${l.id}" title="Move follow-up to tomorrow">+1 day</button>` : ""}</div>
   </div>`;
@@ -781,13 +785,16 @@ function leadCard(l, extra = ""){
 function renderFollowups(){
   const t = todayISO(), wk = addDays(t, 7);
   const open = db.leads.filter(l => isActive(l) && owns(l, focusName())).sort((a, b) => (a.nextFollowUp || "9").localeCompare(b.nextFollowUp || "9") || (scoreOf(b) - scoreOf(a)));
-  const sec = (title, arr) => `<h3>${title} <span class="badge soft">${arr.length}</span>${arr.length > 1 ? `<button class="btn sm" data-act="bulk-ids" data-ids="${arr.map(l => l.id).join(",")}">WhatsApp all</button>` : ""}</h3>${arr.length ? `<div class="lcards">${arr.map(l => leadCard(l)).join("")}</div>` : `<div class="empty">Nothing here 🎉</div>`}`;
+  const sec = (title, arr, extra, hint) => `<h3>${title} <span class="badge soft">${arr.length}</span>${arr.length > 1 ? `<button class="btn sm" data-act="bulk-ids" data-ids="${arr.map(l => l.id).join(",")}">WhatsApp all</button>` : ""}</h3>${hint && arr.length ? `<p class="hint" style="margin:-4px 0 8px">${hint}</p>` : ""}${arr.length ? `<div class="lcards">${arr.map(l => leadCard(l, extra ? extra(l) : "")).join("")}</div>` : `<div class="empty">Nothing here 🎉</div>`}`;
+  const resched = l => `<span class="resched">${RESCHED.filter(r => r[0] !== "1").map(([d, lab]) => `<button class="btn sm" data-act="resched" data-days="${d}" data-id="${l.id}">${lab}</button>`).join("")}</span>`;
+  const pick = l => `<span class="resched">${RESCHED.filter(r => r[0] !== "none").map(([d, lab]) => `<button class="btn sm" data-act="resched" data-days="${d}" data-id="${l.id}">${lab}</button>`).join("")}</span>`;
+  const toSchedule = open.filter(l => !l.nextFollowUp);
   return topbar(`Follow-ups${focusName() ? ` · ${esc(focusName())}` : ""}`) +
-    sec("Overdue", open.filter(l => l.nextFollowUp && l.nextFollowUp < t)) +
+    sec("Overdue", open.filter(l => l.nextFollowUp && l.nextFollowUp < t), resched, "Reschedule with one tap, or log the call to set the next date.") +
     sec("Due today", open.filter(l => l.nextFollowUp === t)) +
+    (toSchedule.length ? sec("To schedule", toSchedule, pick, "Open enquiries marked “Not scheduled”. They never count as overdue – pick a date when you're ready.") : "") +
     sec("Next 7 days", open.filter(l => l.nextFollowUp > t && l.nextFollowUp <= wk)) +
-    sec("Later", open.filter(l => l.nextFollowUp > wk)) +
-    (open.some(l => !l.nextFollowUp) ? sec("No follow-up date set", open.filter(l => !l.nextFollowUp)) : "");
+    sec("Later", open.filter(l => l.nextFollowUp > wk));
 }
 
 /* ----- all enquiries ----- */
@@ -835,7 +842,7 @@ function renderLeads(){
     <td>${fmtDate(l.date)}</td>
     <td>${heatTag(l)} <b>${displayName(l)}</b>${l.name && kidNames(l) ? `<div class="hint">${esc(kidNames(l))}</div>` : ""}${l.type !== "Admission" ? ` <span class="tag">${esc(l.type)}</span>` : ""}</td>
     <td>${esc(fmtPhone(l.phone) || l.phoneRaw)}</td><td>${esc(classesOf(l))}</td><td>${esc(l.source)}${l.campaign ? `<div class="hint">${esc(l.campaign)}</div>` : ""}</td><td>${chip(l.stage)}</td>
-    <td>${isOpen(l) ? relDue(l.nextFollowUp) : `<span class="muted">Closed</span>`}</td>
+    <td>${followLabel(l)}</td>
     <td><div class="acts">${l.phone ? `<button class="btn sm wa" data-act="wa" data-id="${l.id}">WA</button>` : ""}<button class="btn sm" data-act="log" data-id="${l.id}">Log</button></div></td>
   </tr>`).join("")}</tbody></table>` : ""}
   ${L.length ? "" : `<div class="empty">No enquiries match these filters.</div>`}`;
@@ -846,7 +853,7 @@ function mobileList(L){
     <div class="mmain">
       <div class="mtop"><span class="mname">${heatTag(l)} ${displayName(l)}</span>${chip(l.stage)}</div>
       <div class="meta">${esc(fmtPhone(l.phone) || l.phoneRaw)}${classesOf(l) ? ` · ${esc(classesOf(l))}` : ""}${l.type !== "Admission" ? ` · ${esc(l.type)}` : ""}</div>
-      <div class="meta">${fmtDate(l.date)} · ${isOpen(l) ? `Next: ${relDue(l.nextFollowUp)}` : "Closed"}</div>
+      <div class="meta">${fmtDate(l.date)} · ${isActive(l) ? "Next: " : ""}${followLabel(l)}</div>
     </div>
     ${l.phone ? `<div class="mbtns"><a class="ibtn" href="tel:+${l.phone}" data-act="call" data-id="${l.id}" aria-label="Call">${ICON.call}</a><button class="ibtn wa" data-act="wa" data-id="${l.id}" aria-label="WhatsApp">${ICON.wa}</button></div>` : ""}
   </div>`).join("")}</div>`;
@@ -1104,6 +1111,23 @@ function wirePastCheck(input, box){
   return check;
 }
 
+/* ----- follow-up date rules ----- */
+// only open admission enquiries are followed up; job / other enquiries just need the HR reply
+const isOverdue = l => isActive(l) && !!l.nextFollowUp && l.nextFollowUp < todayISO();
+function followLabel(l){
+  if (!isOpen(l)) return `<span class="muted">Closed</span>`;
+  if (l.type !== "Admission") return `<span class="muted">${esc(l.type)} enquiry – no follow-up</span>`;
+  return l.nextFollowUp ? relDue(l.nextFollowUp) : `<span class="tag">Not scheduled</span>`;
+}
+const RESCHED = [["0", "Today"], ["1", "Tomorrow"], ["7", "Next week"], ["none", "Not scheduled"]];
+// "Overdue since 3 Nov" + quick buttons; in a form the buttons fill the date box, in the details panel they save at once
+function overdueBanner(l, inForm){
+  const n = daysBetween(l.nextFollowUp, todayISO());
+  return `<div class="warnbox odbox">Overdue since <b>${fmtDate(l.nextFollowUp)}</b> (${n} day${n === 1 ? "" : "s"}). Reschedule:
+    <span class="quick" style="display:inline-flex;margin:4px 0 0">${RESCHED.map(([d, lab]) => `<button type="button" class="btn sm" data-act="${inForm ? "fresched" : "resched"}" data-days="${d}" data-id="${l.id}">${lab}</button>`).join("")}</span></div>`;
+}
+const reschedDate = d => d === "none" ? "" : addDays(todayISO(), +d);
+
 /* ----- light / dark theme (per device) ----- */
 const THEME_KEY = KEY + ".theme";
 function currentTheme(){ try { return localStorage.getItem(THEME_KEY) || "auto"; } catch(e){ return "auto"; } }
@@ -1315,6 +1339,7 @@ function renderDrawer(){
       ${l.type === "Admission" ? `<button class="btn" data-act="book" data-id="${l.id}">Book visit</button>` : ""}
       <button class="btn" data-act="edit" data-id="${l.id}">Edit</button>
     </div>`}
+    ${isOverdue(l) ? `<div style="margin-bottom:12px">${overdueBanner(l, false)}</div>` : ""}
     ${nr >= 3 && isOpen(l) ? `<div class="warnbox" style="margin-bottom:12px">${nr} unanswered attempts in a row. Consider marking as <b>Not Reachable</b>.</div>` : ""}
     <dl class="kv">
       <dt>Children</dt><dd>${l.children.length ? l.children.map(c => `${esc(c.name || "—")}${c.cls ? ` <span class="tag">${esc(c.cls)}</span>` : ""}`).join("<br>") : "—"}${l.academicYear ? `<div class="hint">Academic year ${esc(l.academicYear)}</div>` : ""}</dd>
@@ -1323,8 +1348,9 @@ function renderDrawer(){
       ${l.email ? `<dt>Email</dt><dd><a href="mailto:${esc(l.email)}">${esc(l.email)}</a></dd>` : ""}
       <dt>Source</dt><dd>${esc(l.source) || "—"}${l.campaign ? ` · <span class="tag">${esc(l.campaign)}</span>` : ""}</dd>
       <dt>Assigned to</dt><dd><select data-field="assignedTo" ${sm} ${can("assign") ? "" : "disabled"}>${staffOpts.map(v => `<option value="${esc(v)}" ${l.assignedTo === v ? "selected" : ""}>${esc(v) || "Unassigned"}</option>`).join("")}</select></dd>
-      <dt>Next follow-up</dt><dd>${isOpen(l) ? relDue(l.nextFollowUp) : "Closed"} <input type="date" value="${l.nextFollowUp || ""}" data-field="nextFollowUp" ${fuMin()} ${sm}></dd>
-      <dt>Visit</dt><dd><input type="date" value="${l.visitDate || ""}" data-field="visitDate" ${sm}> <select data-field="visitTime" ${sm}>${slotOpts.map(v => `<option value="${esc(v)}" ${l.visitTime === v ? "selected" : ""}>${esc(v) || "Any time"}</option>`).join("")}</select></dd>
+      ${l.type !== "Admission" ? `<dt>Follow-up</dt><dd class="muted">Not needed – ${esc(l.type)} enquiry${isOpen(l) && l.type === "Job" ? " (send the HR reply)" : ""}</dd>` : `
+      <dt>Next follow-up</dt><dd>${followLabel(l)} ${isOpen(l) ? `<input type="date" value="${l.nextFollowUp || ""}" data-field="nextFollowUp" ${fuMin()} ${sm}>${l.nextFollowUp ? ` <button class="btn sm" data-act="resched" data-days="none" data-id="${l.id}">Not scheduled</button>` : ""}` : ""}</dd>`}
+      ${l.type !== "Admission" ? "" : `<dt>Visit</dt><dd><input type="date" value="${l.visitDate || ""}" data-field="visitDate" ${sm}> <select data-field="visitTime" ${sm}>${slotOpts.map(v => `<option value="${esc(v)}" ${l.visitTime === v ? "selected" : ""}>${esc(v) || "Any time"}</option>`).join("")}</select></dd>`}
       <dt>Notes</dt><dd style="white-space:pre-wrap">${esc(l.notes) || "—"}</dd>
     </dl>
     ${l.type === "Admission" ? `<h3>Admission progress</h3>
@@ -1380,10 +1406,14 @@ function leadForm(id, pre){
     <label>Enquiry type<select name="type">${opts(["Admission", "Job", "Other"], v.type)}</select></label>
     <label>Assigned to<select name="assignedTo" ${can("assign") ? "" : "disabled"}>${staffL.map(x => `<option value="${esc(x)}" ${x === (v.assignedTo || "") ? "selected" : ""}>${esc(x) || "Unassigned"}</option>`).join("")}</select></label>
     <label>Stage<select name="stage">${opts(STAGE_NAMES, v.stage)}</select></label>
-    <label>Next follow-up<input type="date" name="nextFollowUp" value="${v.nextFollowUp || ""}" ${fuMin()}></label>
-    <label>Visit date<input type="date" name="visitDate" value="${v.visitDate || ""}"></label>
-    <label>Visit time<select name="visitTime">${["", ...slotList()].map(x => `<option value="${esc(x)}" ${x === (v.visitTime || "") ? "selected" : ""}>${esc(x) || "Any time"}</option>`).join("")}</select></label>
+    <div class="full adm-only" id="odwarn">${l && isOverdue(l) ? overdueBanner(l, true) : ""}</div>
+    <label class="adm-only">Next follow-up<input type="date" name="nextFollowUp" value="${v.nextFollowUp || ""}" ${fuMin()}>
+      <span class="quick">${RESCHED.map(([d, lab]) => `<button type="button" class="btn sm" data-act="fresched" data-days="${d}">${lab}</button>`).join("")}</span>
+      <span class="hint" id="fu-state" style="font-weight:500"></span></label>
+    <label class="adm-only">Visit date<input type="date" name="visitDate" value="${v.visitDate || ""}"></label>
+    <label class="adm-only">Visit time<select name="visitTime">${["", ...slotList()].map(x => `<option value="${esc(x)}" ${x === (v.visitTime || "") ? "selected" : ""}>${esc(x) || "Any time"}</option>`).join("")}</select></label>
     <div class="full" id="fuwarn"></div>
+    <div class="full" id="typenote"></div>
     <label class="full">Notes / requirements<textarea name="notes" placeholder="Curriculum preference, siblings, fee questions…">${esc(v.notes)}</textarea></label>
     <div class="full" id="jobwarn"></div>
   </div></div>
@@ -1401,6 +1431,15 @@ function leadForm(id, pre){
   f.phone.addEventListener("input", checkDup); f.notes.addEventListener("input", checkJob); f.name.addEventListener("input", checkJob); f.type.addEventListener("change", checkJob);
   checkDup(); checkJob();
   const checkPast = wirePastCheck(f.nextFollowUp, $("#fuwarn"));
+  // job / other enquiries need no follow-up date or visit
+  const syncType = () => {
+    const adm = f.type.value === "Admission";
+    f.querySelectorAll(".adm-only").forEach(e => { e.style.display = adm ? "" : "none"; });
+    $("#typenote").innerHTML = adm ? "" : `<div class="note">${f.type.value === "Job" ? "Job enquiries need no follow-up date – just send the <b>HR reply</b> from the Job enquiries page." : "Other enquiries need no follow-up date."}</div>`;
+  };
+  const fuState = () => { $("#fu-state").textContent = f.nextFollowUp.value ? "" : "Not scheduled – it will show under Follow-ups → To schedule, never as overdue."; };
+  f.type.addEventListener("change", syncType); f.nextFollowUp.addEventListener("input", fuState); f.nextFollowUp.addEventListener("change", fuState);
+  syncType(); fuState();
   if (pre && typeof markFound === "function") markFound(f, pre);
   setTimeout(() => f.phone.focus(), 30);
   f.addEventListener("submit", e => {
@@ -1408,14 +1447,18 @@ function leadForm(id, pre){
     const fd = Object.fromEntries(new FormData(f).entries());
     const phone = normPhone(fd.phone);
     if (!phone) { toast("Please enter a phone number"); f.phone.focus(); return; }
-    if (!CLOSED.has(fd.stage) && pastBlocked(fd.nextFollowUp)) { checkPast(); toast(PAST_MSG); f.nextFollowUp.focus(); return; }
+    const followed = fd.type === "Admission" && !CLOSED.has(fd.stage);
+    if (followed && l && isOverdue(l) && fd.nextFollowUp === l.nextFollowUp) {
+      toast("This enquiry is overdue – choose a new follow-up date or “Not scheduled”"); $("#odwarn").scrollIntoView({ block: "center" }); $("#odwarn .warnbox")?.classList.add("pulse"); return;
+    }
+    if (followed && pastBlocked(fd.nextFollowUp)) { checkPast(); toast(PAST_MSG); f.nextFollowUp.focus(); return; }
     const children = [...f.querySelectorAll(".kid")].map(r => ({ id: uid(), name: r.querySelector(".kid-n").value.trim(), cls: normCls(r.querySelector(".kid-c").value) })).filter(k => k.name || k.cls);
     const now = new Date().toISOString();
     let created = null;
     const data = { date: fd.date || t, name: fd.name.trim(), email: fd.email.trim(), phone, phoneRaw: fd.phone.trim(), children, academicYear: fd.academicYear.trim(),
       location: fd.location.trim(), transport: fd.transport, source: fd.source, campaign: fd.campaign.trim(), type: fd.type,
       assignedTo: can("assign") ? fd.assignedTo : (l ? l.assignedTo : meName()),
-      nextFollowUp: CLOSED.has(fd.stage) ? "" : fd.nextFollowUp, visitDate: fd.visitDate, visitTime: fd.visitTime, notes: fd.notes.trim() };
+      nextFollowUp: followed ? fd.nextFollowUp : "", visitDate: fd.type === "Admission" ? fd.visitDate : "", visitTime: fd.type === "Admission" ? fd.visitTime : "", notes: fd.notes.trim() };
     if (l) {
       const to = fd.stage;
       const kidStr = c => (c || []).map(k => (k.name || "") + "/" + (k.cls || "")).join(",");
@@ -1462,8 +1505,9 @@ function logForm(id, channel){
     <label>Visit date<input type="date" name="visitDate" value="${l.visitDate || ""}"></label>
     <label>Visit time<select name="visitTime">${["", ...slotList()].map(x => `<option value="${esc(x)}" ${x === (l.visitTime || "") ? "selected" : ""}>${esc(x) || "Any time"}</option>`).join("")}</select></label>
     <div class="full" id="slotwarn"></div>
-    <label class="full">Next follow-up<input type="date" name="next" value="${addDays(t, 2)}" ${fuMin()}>
-      <div class="quick">${[[1, "Tomorrow"], [2, "+2 days"], [3, "+3 days"], [7, "1 week"], [30, "1 month"]].map(([n, lab]) => `<button type="button" class="btn sm" data-act="qnext" data-days="${n}">${lab}</button>`).join("")}<button type="button" class="btn sm" data-act="qnext" data-days="">No follow-up</button></div></label>
+    ${l.type === "Admission" ? `<label class="full">Next follow-up<input type="date" name="next" value="${addDays(t, 2)}" ${fuMin()}>
+      <div class="quick">${[[1, "Tomorrow"], [2, "+2 days"], [3, "+3 days"], [7, "1 week"], [30, "1 month"]].map(([n, lab]) => `<button type="button" class="btn sm" data-act="qnext" data-days="${n}">${lab}</button>`).join("")}<button type="button" class="btn sm" data-act="qnext" data-days="">Not scheduled</button></div></label>`
+      : `<input type="hidden" name="next" value=""><div class="full note">${esc(l.type)} enquiries need no follow-up date.</div>`}
     <div class="full" id="fuwarn"></div>
     <div class="full">${nr >= 2 ? `<div class="warnbox">${nr} unanswered attempts so far. If this one is also unanswered, consider <b>Not Reachable</b>.</div>` : ""}</div>
   </div></div>
@@ -1506,7 +1550,7 @@ function logForm(id, channel){
     if (fd.stage === "Lost") l.lostReason = fd.lostReason;
     if (fd.stage === "Not Reachable" && !l.lostReason) l.lostReason = "No response";
     if (fd.stage === "Fee Paid" && !l.feePaidDate) l.feePaidDate = fd.date || t;
-    l.stage = fd.stage; l.visitDate = fd.visitDate; l.visitTime = fd.visitTime; l.nextFollowUp = CLOSED.has(fd.stage) ? "" : fd.next;
+    l.stage = fd.stage; l.visitDate = fd.visitDate; l.visitTime = fd.visitTime; l.nextFollowUp = CLOSED.has(fd.stage) || l.type !== "Admission" ? "" : fd.next;
     touch(l); save(); closeDialog(); render();
     toast(l.nextFollowUp ? `Logged · next follow-up ${fmtDate(l.nextFollowUp)}` : "Logged");
   });
@@ -1642,6 +1686,24 @@ document.addEventListener("click", async e => {
   if (el.tagName === "A" && el.getAttribute("href") === "#") e.preventDefault();
   if (!can("edit") && EDIT_ACTS.has(act)) { e.preventDefault(); toast("Your role is view-only"); return; }
   if (act === "theme") { applyTheme(el.dataset.t); return; }
+  if (act === "fresched") {           // quick date buttons inside a form
+    if (!can("edit")) return;
+    const form = el.closest("form"), input = form && (form.elements.nextFollowUp || form.elements.next);
+    if (!input) return;
+    input.value = reschedDate(el.dataset.days);
+    input.dispatchEvent(new Event("input")); input.dispatchEvent(new Event("change"));
+    const od = form.querySelector("#odwarn"); if (od && od.innerHTML) od.innerHTML = `<div class="note">New follow-up: <b>${input.value ? fmtDate(input.value) : "Not scheduled"}</b> – save to keep it.</div>`;
+    return;
+  }
+  if (act === "resched") {            // quick buttons on cards and in the details panel – saved at once
+    if (!can("edit")) { toast("Your role is view-only"); return; }
+    const l = db.leads.find(x => x.id === el.dataset.id); if (!l) return;
+    const nd = reschedDate(el.dataset.days);
+    logAct("Follow-up rescheduled", l, `${l.nextFollowUp ? fmtDate(l.nextFollowUp) : "Not scheduled"} → ${nd ? fmtDate(nd) : "Not scheduled"}`);
+    l.nextFollowUp = nd; touch(l); save(); render();
+    toast(nd ? `Follow-up set for ${fmtDate(nd)}` : "Marked Not scheduled – it's in Follow-ups → To schedule");
+    return;
+  }
   if (typeof pasteAction === "function" && pasteAction(act, el)) return;
   if (typeof reportAction === "function" && reportAction(act, el)) return;
   switch (act) {
