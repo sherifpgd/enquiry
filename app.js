@@ -39,7 +39,7 @@ const ROLE_INFO = {
   Partner: "View only: see and filter all enquiries, their details and reports. Cannot add, edit, delete, message or export. Can change their own password"
 };
 // actions that change data or contact families – blocked for view-only roles
-const EDIT_ACTS = new Set(["new","paste","paste-go","edit","log","call","wa","wa-send","book","visited","noshow","snooze","stage","to-adm","to-job",
+const EDIT_ACTS = new Set(["new","paste","paste-go","paste-clip","bulk-save","fr-send","edit","log","call","wa","wa-send","book","visited","noshow","snooze","stage","to-adm","to-job",
   "mark-job","add-kid","rm-kid","delete","sel","sel-all","bulk-sel","bulk-ids","bulk-send","daily-lists","import","restore","clear-all","spend-add","spend-del"]);
 const mq = window.matchMedia("(max-width: 860px)");
 const isMobile = () => mq.matches;
@@ -60,6 +60,7 @@ const DEFAULT_SETTINGS = {
   visitDays: [1,2,3,4,5], visitSlots: "09:00, 10:00, 11:00, 12:00, 13:00", slotCapacity: 2,
   seats: {},
   swapDates: true,
+  blockPastFollowUp: true,
   avgFee: "", stuckDays: 10, reportEmails: "", reportRecipients: [], spend: [], stageProb: {},
   tpl: {
     "First reply": "Dear {name}, thank you for your admission enquiry{for_class} at {school}. We would be happy to share details and invite you for a school visit. When would be a convenient time to talk?",
@@ -392,6 +393,7 @@ function startSession(r, username){
   pull(true).then(flush);
   render();
   toast(`Welcome, ${r.user.name}`);
+  if (typeof handleShare === "function") setTimeout(handleShare, 400);
 }
 function onAuthLost(){
   local.session = null; saveLocal();
@@ -659,46 +661,14 @@ function dailyText(name){
   if (parts.length === 1) parts.push("\nNo follow-ups due today. 🎉");
   return parts.join("\n");
 }
-function parseEnquiryText(txt){
-  const p = { children: [], notes: "" }; const rest = [];
-  const lines = String(txt || "").split(/\r?\n/).map(s => s.replace(/^[*_•\-\s]+|[*_]+$/g, "").replace(/\*/g, "").trim()).filter(Boolean);
-  for (const line of lines) {
-    if (/^(new )?(admission|job) enquiry/i.test(line)) { if (/^(new )?job/i.test(line)) p.type = "Job"; continue; }
-    const m = line.match(/^([A-Za-z][A-Za-z0-9 \/'()]{0,28}?)\s*[:：]\s*(.*)$/);
-    if (!m) { rest.push(line); continue; }
-    const k = m[1].toLowerCase().trim(), v = m[2].trim();
-    if (!v) continue;
-    if (/^(parent|parent name|name|contact name|father|mother|guardian|your name)/.test(k)) p.name = p.name || v;
-    else if (/phone|mobile|whats ?app|contact|number/.test(k)) p.phone = p.phone || v;
-    else if (/e-?mail/.test(k)) p.email = v;
-    else if (/area|location|address|place|city/.test(k)) p.location = v;
-    else if (/^(child|student|kid)/.test(k)) { const [n, c] = v.split(/\s+[–—-]\s+/); p.children.push({ name: (n || "").replace(/^-$/, "").trim(), cls: normCls((c || "").trim()) }); }
-    else if (/^(class|grade)/.test(k)) p._cls = v;
-    else if (/academic|year/.test(k)) p.academicYear = v;
-    else if (/transport|bus/.test(k)) p.transport = /^y/i.test(v) ? "Yes" : /^n/i.test(v) ? "No" : "";
-    else if (/source|hear/.test(k)) p.source = v;
-    else if (/campaign/.test(k)) p.campaign = v;
-    else if (/^(type|enquiry for|enquiring|regarding)/.test(k)) p.type = /job|vacanc|career|teach/i.test(v) ? "Job" : "Admission";
-    else rest.push(/message|note|comment|query|remark/.test(k) ? v : line);
-  }
-  if (p._cls && !p.children.length) list(p._cls).forEach(c => p.children.push({ name: "", cls: normCls(c) }));
-  delete p._cls;
-  if (!p.phone) { const m = String(txt).match(/(\+?\d[\d\s\-()]{7,}\d)/); if (m) p.phone = m[1]; }
-  if (!p.children.length) {          // free text: "admission for KG1", "grade 3", "G2 and G5"
-    const found = [...String(txt).matchAll(/\b(pre-?kg|kg\s?\d|grade\s?\d{1,2}|g\d{1,2})\b/gi)].map(m => normCls(m[1].replace(/\s+/g, " ")));
-    [...new Set(found)].forEach(c => p.children.push({ name: "", cls: c }));
-  }
-  if (!p.name) { const m = String(txt).match(/(?:[Mm]y name is|[Tt]his is|I am|I'm)\s+([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)/); if (m) p.name = m[1]; }
-  p.notes = rest.join("\n");
-  if (!p.type && isJobText(txt)) { p.type = "Job"; p._jobGuess = true; }
-  return p;
-}
+// parseEnquiryText / pasteForm live in paste.js
 
 /* =====================================================================
    RENDERING
    ===================================================================== */
 function renderBadges(){
   document.body.classList.toggle("readonly", !can("edit"));
+  const ts = $("#theme-slot"); if (ts && !ts.firstChild) ts.innerHTML = themeSelect();
   const t = todayISO();
   const due = db.leads.filter(l => isActive(l) && l.nextFollowUp && l.nextFollowUp <= t).length;
   const setB = (id, n) => { const b = $(id); if (!b) return; b.textContent = n || ""; b.style.display = n ? "" : "none"; };
@@ -785,7 +755,7 @@ function renderDashboard(){
   </div>
   <div class="grid two" style="margin-top:14px">
     <div class="card"><h2>Admission pipeline</h2>${bars(STAGE_NAMES.filter(s => s !== "Invalid" && s !== "Closed").map(s => [s, adm.filter(l => l.stage === s).length]).filter(e => e[1]), s => STAGE_COLOR[s])}</div>
-    <div class="card"><h2>Hottest leads</h2>${hot.length ? hot.slice(0, 6).map(l => `<div class="hotrow" data-act="open" data-id="${l.id}"><span>${heatTag(l)} <b>${displayName(l)}</b> <span class="muted">${esc(classesOf(l))}</span></span>${chip(l.stage)}</div>`).join("") : `<div class="muted">No hot leads right now. Leads become hot when they answer, book or attend a visit.</div>`}</div>
+    <div class="card"><h2>Hottest leads</h2>${hot.length ? hot.slice(0, 6).map(l => `<div class="hotrow" data-act="open" data-id="${l.id}"><span class="who">${avatar(l)}<span>${heatTag(l)} <b>${displayName(l)}</b> <span class="muted">${esc(classesOf(l))}</span></span></span>${chip(l.stage)}</div>`).join("") : `<div class="muted">No hot leads right now. Leads become hot when they answer, book or attend a visit.</div>`}</div>
     <div class="card"><h2>Enquiries per day (last 14 days)</h2>
       <div class="daily">${days.map((d, i) => `<div class="d" title="${fmtDate(d)}: ${dc[i]}"><span class="n">${dc[i] || ""}</span><div class="b" style="height:${dc[i] / dmax * 85}%"></div><span>${+d.slice(8)}</span></div>`).join("")}</div>
     </div>
@@ -801,8 +771,8 @@ function leadCard(l, extra = ""){
   const wa = l.phone ? `<button class="btn sm wa" data-act="wa" data-id="${l.id}">WhatsApp</button>` : "";
   const call = l.phone ? `<a class="btn sm" href="tel:+${l.phone}" data-act="call" data-id="${l.id}">Call</a>` : "";
   return `<div class="lc">
-    <div class="h"><div><div class="nm" data-act="open" data-id="${l.id}">${heatTag(l)} ${displayName(l)}</div>
-      <div class="meta">${esc(fmtPhone(l.phone) || l.phoneRaw)}${classesOf(l) ? ` · ${esc(classesOf(l))}` : ""}${l.location ? ` · ${esc(l.location)}` : ""}${l.transport === "Yes" ? ` · 🚌` : ""}${l.assignedTo ? ` · ${esc(l.assignedTo)}` : ""}</div></div>${chip(l.stage)}</div>
+    <div class="h"><div class="who">${avatar(l)}<div style="min-width:0"><div class="nm" data-act="open" data-id="${l.id}">${heatTag(l)} ${displayName(l)}</div>
+      <div class="meta">${esc(fmtPhone(l.phone) || l.phoneRaw)}${classesOf(l) ? ` · ${esc(classesOf(l))}` : ""}${l.location ? ` · ${esc(l.location)}` : ""}${l.transport === "Yes" ? ` · 🚌` : ""}${l.assignedTo ? ` · ${esc(l.assignedTo)}` : ""}</div></div></div>${chip(l.stage)}</div>
     <div class="meta">${isOpen(l) ? `Follow-up: ${relDue(l.nextFollowUp)}` : "Closed"}${l.visitDate ? ` · Visit: <b>${fmtDate(l.visitDate)}${l.visitTime ? " " + esc(l.visitTime) : ""}</b>` : ""} · Enquired ${fmtDate(l.date)}</div>
     ${last ? `<div class="last"><span class="muted">${fmtDate(last.date)}:</span> ${esc([last.channel, last.outcome].filter(Boolean).join(" · "))}${last.note ? ` — ${esc(last.note)}` : ""}</div>` : ""}
     <div class="acts">${call}${wa}<button class="btn sm primary" data-act="log" data-id="${l.id}">Log follow-up</button>${extra}${isOpen(l) && l.type === "Admission" ? `<button class="btn sm" data-act="snooze" data-id="${l.id}" title="Move follow-up to tomorrow">+1 day</button>` : ""}</div>
@@ -872,7 +842,7 @@ function renderLeads(){
 }
 function mobileList(L){
   return `<div class="mlist">${L.map(l => `<div class="mrow" data-act="open" data-id="${l.id}">
-    <input type="checkbox" data-act="sel" data-id="${l.id}" ${sel.has(l.id) ? "checked" : ""} aria-label="Select">
+    <input type="checkbox" data-act="sel" data-id="${l.id}" ${sel.has(l.id) ? "checked" : ""} aria-label="Select">${avatar(l)}
     <div class="mmain">
       <div class="mtop"><span class="mname">${heatTag(l)} ${displayName(l)}</span>${chip(l.stage)}</div>
       <div class="meta">${esc(fmtPhone(l.phone) || l.phoneRaw)}${classesOf(l) ? ` · ${esc(classesOf(l))}` : ""}${l.type !== "Admission" ? ` · ${esc(l.type)}` : ""}</div>
@@ -1120,6 +1090,20 @@ function formLink(src, campaign){
   const q = p.toString();
   return base + (q ? (base.includes("?") ? "&" : "?") + q : "");
 }
+/* ----- past follow-up dates (Settings switch) ----- */
+const PAST_MSG = "That date has passed – use today or pick a later date.";
+const pastBlocked = d => !!db.settings.blockPastFollowUp && !!d && d < todayISO();
+const fuMin = () => db.settings.blockPastFollowUp ? `min="${todayISO()}"` : "";
+// live warning under a next-follow-up input, with a one-tap "Use today"
+function wirePastCheck(input, box){
+  const check = () => {
+    box.innerHTML = pastBlocked(input.value) ? `<div class="warnbox">${PAST_MSG} <a href="#" data-act="fu-today">Use today</a></div>` : "";
+    const a = box.querySelector("a"); if (a) a.onclick = e => { e.preventDefault(); input.value = todayISO(); check(); };
+  };
+  input.addEventListener("input", check); input.addEventListener("change", check); check();
+  return check;
+}
+
 /* ----- light / dark theme (per device) ----- */
 const THEME_KEY = KEY + ".theme";
 function currentTheme(){ try { return localStorage.getItem(THEME_KEY) || "auto"; } catch(e){ return "auto"; } }
@@ -1128,9 +1112,25 @@ function applyTheme(t){
   try { if (t === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, t); } catch(e){}
   const dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0b1120" : "#1d4ed8");
-  document.querySelectorAll("#theme, #theme2").forEach(s => { s.value = t; });
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0a0f1c" : "#2557e8");
+  document.querySelectorAll(".seg [data-act='theme']").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === t)));
 }
-const themeSelect = id => `<select id="${id}" aria-label="Colour theme">${[["auto", "Auto (device)"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<option value="${v}" ${currentTheme() === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+// three icon buttons: Auto (device) · Light · Dark
+const THEME_ICONS = {
+  auto: `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>`,
+  light: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
+  dark: `<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>`
+};
+const themeSelect = () => `<span class="seg" role="group" aria-label="Colour theme">${[["auto", "Auto – follow this device"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) =>
+  `<button type="button" data-act="theme" data-t="${v}" title="${l}" aria-label="${l}" aria-pressed="${currentTheme() === v}">${THEME_ICONS[v]}</button>`).join("")}</span>`;
+// coloured initials for a family
+function avatar(l, big){
+  const n = (l.name || kidNames(l) || "?").trim();
+  const parts = n.split(/[\s/]+/).filter(Boolean);
+  const ini = ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+  let h = 0; for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `<span class="av${big ? " lg" : ""}" style="--h:${h}" aria-hidden="true">${esc(ini)}</span>`;
+}
 
 /* ----- report email recipients (Settings) ----- */
 const REPORT_EMAIL_SECTIONS = [["summary","Summary figures"],["followups","Follow-ups due & overdue"],["newlist","New enquiries list"],["visits","School visits"],
@@ -1195,6 +1195,7 @@ function renderSettings(){
       ${inp("academicYear", "Admission year", "2027-28")}
       ${inp("currency", "Currency", "AED")}
       ${inp("hrEmail", "HR email (for job replies)", "hr@school.com")}
+      <label class="full" style="flex-direction:row;align-items:center;gap:8px;font-weight:500"><input type="checkbox" data-set="blockPastFollowUp" ${s.blockPastFollowUp ? "checked" : ""}> Don't allow a <b>next follow-up</b> date in the past (the enquiry date can still be in the past)</label>
       ${syncOn() ? `<p class="hint full" style="margin:0">Staff for assigning leads and daily emails come from <b>Users & access roles</b>. Unassigned leads go to the first counsellor.</p>`
         : ta("counsellors", "Staff – one per line:  Name | WhatsApp number | email", "Phone and email are used to send each person their daily list. Unassigned leads go to the first person.", 4)}
     </div>
@@ -1303,7 +1304,7 @@ function renderDrawer(){
   const slotOpts = ["", ...slotList(), l.visitTime].filter((v, i, a) => a.indexOf(v) === i);
   const sm = `style="width:auto;padding:3px 6px"`;
   $("#drawer").innerHTML = `
-  <div class="dh"><div style="flex:1;min-width:0"><div style="font-size:17px;font-weight:700">${displayName(l)}</div>
+  <div class="dh">${avatar(l, true)}<div style="flex:1;min-width:0"><div style="font-size:17px;font-weight:700;letter-spacing:-.01em">${displayName(l)}</div>
     <div class="hint">${esc(fmtPhone(l.phone) || l.phoneRaw)} · enquired ${fmtDate(l.date)}</div>
     <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${chip(l.stage)} ${heatTag(l)} ${l.type !== "Admission" ? `<span class="tag">${esc(l.type)}</span>` : ""}${l.lostReason && !isOpen(l) ? `<span class="tag">${esc(l.lostReason)}</span>` : ""}</div></div>
     <button class="x" data-act="close-drawer" aria-label="Close">×</button></div>
@@ -1322,7 +1323,7 @@ function renderDrawer(){
       ${l.email ? `<dt>Email</dt><dd><a href="mailto:${esc(l.email)}">${esc(l.email)}</a></dd>` : ""}
       <dt>Source</dt><dd>${esc(l.source) || "—"}${l.campaign ? ` · <span class="tag">${esc(l.campaign)}</span>` : ""}</dd>
       <dt>Assigned to</dt><dd><select data-field="assignedTo" ${sm} ${can("assign") ? "" : "disabled"}>${staffOpts.map(v => `<option value="${esc(v)}" ${l.assignedTo === v ? "selected" : ""}>${esc(v) || "Unassigned"}</option>`).join("")}</select></dd>
-      <dt>Next follow-up</dt><dd>${isOpen(l) ? relDue(l.nextFollowUp) : "Closed"} <input type="date" value="${l.nextFollowUp || ""}" data-field="nextFollowUp" ${sm}></dd>
+      <dt>Next follow-up</dt><dd>${isOpen(l) ? relDue(l.nextFollowUp) : "Closed"} <input type="date" value="${l.nextFollowUp || ""}" data-field="nextFollowUp" ${fuMin()} ${sm}></dd>
       <dt>Visit</dt><dd><input type="date" value="${l.visitDate || ""}" data-field="visitDate" ${sm}> <select data-field="visitTime" ${sm}>${slotOpts.map(v => `<option value="${esc(v)}" ${l.visitTime === v ? "selected" : ""}>${esc(v) || "Any time"}</option>`).join("")}</select></dd>
       <dt>Notes</dt><dd style="white-space:pre-wrap">${esc(l.notes) || "—"}</dd>
     </dl>
@@ -1361,7 +1362,7 @@ function leadForm(id, pre){
   if (!v.children || !v.children.length) v.children = [{}];
   const sources = [...new Set([...list(s.sources), v.source].filter(Boolean))];
   const staffL = [...new Set(["", ...staffNames(), v.assignedTo || ""])];
-  showDialog(`<form method="dialog" id="leadform">
+  showDialog(`<form method="dialog" id="leadform" novalidate>
   <div class="dlg-h"><b>${l ? "Edit enquiry" : "New admission enquiry"}</b><button type="button" class="x" data-act="close-dlg">×</button></div>
   <div class="dlg-b"><div class="form">
     <label>Phone / WhatsApp *<input type="tel" name="phone" required value="${esc(l ? (fmtPhone(l.phone) || l.phoneRaw) : (pre && pre.phone) || "")}" placeholder="05X XXX XXXX"></label>
@@ -1379,9 +1380,10 @@ function leadForm(id, pre){
     <label>Enquiry type<select name="type">${opts(["Admission", "Job", "Other"], v.type)}</select></label>
     <label>Assigned to<select name="assignedTo" ${can("assign") ? "" : "disabled"}>${staffL.map(x => `<option value="${esc(x)}" ${x === (v.assignedTo || "") ? "selected" : ""}>${esc(x) || "Unassigned"}</option>`).join("")}</select></label>
     <label>Stage<select name="stage">${opts(STAGE_NAMES, v.stage)}</select></label>
-    <label>Next follow-up<input type="date" name="nextFollowUp" value="${v.nextFollowUp || ""}"></label>
+    <label>Next follow-up<input type="date" name="nextFollowUp" value="${v.nextFollowUp || ""}" ${fuMin()}></label>
     <label>Visit date<input type="date" name="visitDate" value="${v.visitDate || ""}"></label>
     <label>Visit time<select name="visitTime">${["", ...slotList()].map(x => `<option value="${esc(x)}" ${x === (v.visitTime || "") ? "selected" : ""}>${esc(x) || "Any time"}</option>`).join("")}</select></label>
+    <div class="full" id="fuwarn"></div>
     <label class="full">Notes / requirements<textarea name="notes" placeholder="Curriculum preference, siblings, fee questions…">${esc(v.notes)}</textarea></label>
     <div class="full" id="jobwarn"></div>
   </div></div>
@@ -1398,14 +1400,18 @@ function leadForm(id, pre){
   };
   f.phone.addEventListener("input", checkDup); f.notes.addEventListener("input", checkJob); f.name.addEventListener("input", checkJob); f.type.addEventListener("change", checkJob);
   checkDup(); checkJob();
+  const checkPast = wirePastCheck(f.nextFollowUp, $("#fuwarn"));
+  if (pre && typeof markFound === "function") markFound(f, pre);
   setTimeout(() => f.phone.focus(), 30);
   f.addEventListener("submit", e => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(f).entries());
     const phone = normPhone(fd.phone);
-    if (!phone) { toast("Please enter a phone number"); return; }
+    if (!phone) { toast("Please enter a phone number"); f.phone.focus(); return; }
+    if (!CLOSED.has(fd.stage) && pastBlocked(fd.nextFollowUp)) { checkPast(); toast(PAST_MSG); f.nextFollowUp.focus(); return; }
     const children = [...f.querySelectorAll(".kid")].map(r => ({ id: uid(), name: r.querySelector(".kid-n").value.trim(), cls: normCls(r.querySelector(".kid-c").value) })).filter(k => k.name || k.cls);
     const now = new Date().toISOString();
+    let created = null;
     const data = { date: fd.date || t, name: fd.name.trim(), email: fd.email.trim(), phone, phoneRaw: fd.phone.trim(), children, academicYear: fd.academicYear.trim(),
       location: fd.location.trim(), transport: fd.transport, source: fd.source, campaign: fd.campaign.trim(), type: fd.type,
       assignedTo: can("assign") ? fd.assignedTo : (l ? l.assignedTo : meName()),
@@ -1429,13 +1435,14 @@ function leadForm(id, pre){
         if (!isOpen(dup) && dup.stage !== "Admitted") { changeStage(dup, "New", { silent: true }); }
         dup.nextFollowUp = t; touch(dup); drawerId = dup.id;
       } else {
-        const nl = migrateLead(Object.assign({ id: uid(), createdAt: now, stage: fd.stage, history: [{ id: uid(), at: now, date: data.date, kind: "note", by: meName(), note: "Enquiry captured" }] }, data));
-        db.leads.push(nl); touch(nl); drawerId = nl.id;
+        const nl = migrateLead(Object.assign({ id: uid(), createdAt: (pre && pre._at) || now, stage: fd.stage, history: [{ id: uid(), at: now, date: data.date, kind: "note", by: meName(), note: pre && pre._found ? "Enquiry captured from a pasted message" : "Enquiry captured" }] }, data));
+        db.leads.push(nl); touch(nl); drawerId = nl.id; created = nl;
         logAct("Enquiry added", nl, [classesOf(nl), nl.source, nl.assignedTo ? "\u2192 " + nl.assignedTo : ""].filter(Boolean).join(" · "));
       }
     }
     save(); closeDialog(); render(); if (drawerId) openDrawer(drawerId);
     toast(l ? "Saved" : "Enquiry added");
+    if (created && created.phone && !CLOSED.has(created.stage) && typeof offerFirstReply === "function") setTimeout(() => offerFirstReply(created), 250);
   });
 }
 
@@ -1443,7 +1450,7 @@ function logForm(id, channel){
   const l = db.leads.find(x => x.id === id); if (!l) return;
   const t = todayISO();
   const nr = consecutiveNoAnswer(l);
-  showDialog(`<form method="dialog" id="logform">
+  showDialog(`<form method="dialog" id="logform" novalidate>
   <div class="dlg-h"><b>Log follow-up · ${displayName(l)}</b><button type="button" class="x" data-act="close-dlg">×</button></div>
   <div class="dlg-b"><div class="form">
     <label>Date<input type="date" name="date" value="${t}"></label>
@@ -1455,8 +1462,9 @@ function logForm(id, channel){
     <label>Visit date<input type="date" name="visitDate" value="${l.visitDate || ""}"></label>
     <label>Visit time<select name="visitTime">${["", ...slotList()].map(x => `<option value="${esc(x)}" ${x === (l.visitTime || "") ? "selected" : ""}>${esc(x) || "Any time"}</option>`).join("")}</select></label>
     <div class="full" id="slotwarn"></div>
-    <label class="full">Next follow-up<input type="date" name="next" value="${addDays(t, 2)}">
+    <label class="full">Next follow-up<input type="date" name="next" value="${addDays(t, 2)}" ${fuMin()}>
       <div class="quick">${[[1, "Tomorrow"], [2, "+2 days"], [3, "+3 days"], [7, "1 week"], [30, "1 month"]].map(([n, lab]) => `<button type="button" class="btn sm" data-act="qnext" data-days="${n}">${lab}</button>`).join("")}<button type="button" class="btn sm" data-act="qnext" data-days="">No follow-up</button></div></label>
+    <div class="full" id="fuwarn"></div>
     <div class="full">${nr >= 2 ? `<div class="warnbox">${nr} unanswered attempts so far. If this one is also unanswered, consider <b>Not Reachable</b>.</div>` : ""}</div>
   </div></div>
   <div class="dlg-f"><button type="button" class="btn" data-act="close-dlg">Cancel</button><button class="btn primary" type="submit">Save follow-up</button></div>
@@ -1486,8 +1494,10 @@ function logForm(id, channel){
   f.visitDate.addEventListener("change", () => { slotSync(); if (f.visitDate.value && (RANK[f.stage.value] ?? 0) < 3 && !CLOSED.has(f.stage.value)) f.stage.value = "Visit Scheduled"; });
   f.visitTime.addEventListener("change", slotSync);
   if (channel === "WhatsApp") { f.outcome.value = "Message sent"; sync(); }
+  const checkPast = wirePastCheck(f.next, $("#fuwarn"));
   f.addEventListener("submit", e => {
     e.preventDefault();
+    if (!CLOSED.has(f.stage.value) && pastBlocked(f.next.value)) { checkPast(); toast(PAST_MSG); f.next.focus(); return; }
     const fd = Object.fromEntries(new FormData(f).entries());
     if (fd.stage === "Lost" && !fd.lostReason) { toast("Please choose why this lead was lost"); f.lostReason.focus(); return; }
     const now = new Date().toISOString();
@@ -1569,14 +1579,6 @@ function lostReasonForm(ids, cb){
   $("#lostform").addEventListener("submit", e => { e.preventDefault(); const r = e.target.r.value; if (!r) return; closeDialog(); cb(r); });
 }
 
-function pasteForm(){
-  showDialog(`<div class="dlg-h"><b>Paste an enquiry</b><button class="x" data-act="close-dlg">×</button></div>
-  <div class="dlg-b"><p class="hint" style="margin-top:0">Paste a WhatsApp message, an online-form message, an email or a Facebook/Instagram lead. Name, phone, children and classes are picked out automatically, and you can check them before saving.</p>
-  <textarea id="paste-t" style="min-height:180px" placeholder="Hi, I want admission for my son in KG2. My name is Ayesha, 050 123 4567, we live in Shabiya…"></textarea></div>
-  <div class="dlg-f"><button class="btn" data-act="close-dlg">Cancel</button><button class="btn primary" data-act="paste-go">Read enquiry</button></div>`);
-  setTimeout(() => $("#paste-t").focus(), 30);
-}
-
 function dailyListsForm(){
   const S = staff();
   const rows = (S.length ? S : [{ name: "", phone: "", email: "" }]).map(s => {
@@ -1639,20 +1641,13 @@ document.addEventListener("click", async e => {
   const lead = id && db.leads.find(x => x.id === id);
   if (el.tagName === "A" && el.getAttribute("href") === "#") e.preventDefault();
   if (!can("edit") && EDIT_ACTS.has(act)) { e.preventDefault(); toast("Your role is view-only"); return; }
+  if (act === "theme") { applyTheme(el.dataset.t); return; }
+  if (typeof pasteAction === "function" && pasteAction(act, el)) return;
   if (typeof reportAction === "function" && reportAction(act, el)) return;
   switch (act) {
     case "nav": ui.view = el.dataset.view; closeDrawer(); render(); window.scrollTo(0, 0); break;
     case "goto": Object.assign(ui, { stage: "", source: "", q: "", owner: "", heat: "" }, JSON.parse(el.dataset.f)); ui.view = "leads"; render(); break;
     case "new": leadForm(); break;
-    case "paste": pasteForm(); break;
-    case "paste-go": {
-      const p = parseEnquiryText($("#paste-t").value);
-      if (!p.phone && !p.name) { toast("Couldn't find a name or phone number in that text"); break; }
-      if (!p.source) p.source = /\bweb|online form/i.test($("#paste-t").value) ? "Online form" : "WhatsApp";
-      const jobGuess = p._jobGuess; delete p._jobGuess;
-      leadForm(null, Object.assign({ date: todayISO(), stage: "New", nextFollowUp: todayISO(), academicYear: db.settings.academicYear, assignedTo: focusName() || staffNames()[0] || "" }, p));
-      if (jobGuess) toast("Looks like a job enquiry – type set to Job");
-      break; }
     case "edit": leadForm(id); break;
     case "open": openDrawer(id); break;
     case "open-dup": closeDialog(); openDrawer(id); break;
@@ -1681,7 +1676,7 @@ document.addEventListener("click", async e => {
       lead.history.push({ id: uid(), at: new Date().toISOString(), date: todayISO(), kind: "followup", channel: "Visit", outcome: "Other", note: `No-show for visit on ${fmtDate(lead.visitDate)}`, by: meName(), stageFrom: lead.stage, stageTo: "Interested" }); logAct("Visit no-show", lead, fmtDate(lead.visitDate));
       lead.stage = "Interested"; lead.visitDate = ""; lead.visitTime = ""; lead.nextFollowUp = todayISO(); touch(lead); save(); render(); toast("No-show recorded – call to reschedule"); break;
     case "cal": ui.calWeek = el.dataset.d === "0" ? 0 : ui.calWeek + +el.dataset.d; render(); break;
-    case "qnext": { const f = el.closest("form"); f.next.value = el.dataset.days ? addDays(todayISO(), +el.dataset.days) : ""; break; }
+    case "qnext": { const f = el.closest("form"); f.next.value = el.dataset.days ? addDays(todayISO(), +el.dataset.days) : ""; f.next.dispatchEvent(new Event("input")); break; }
     case "snooze": logAct("Follow-up moved", lead, "to tomorrow"); lead.nextFollowUp = addDays(todayISO(), 1); touch(lead); save(); render(); toast("Moved to tomorrow"); break;
     case "stage": changeStage(lead, el.dataset.stage); break;
     case "to-adm": logAct("Type changed", lead, "Job \u2192 Admission"); lead.type = "Admission"; changeStage(lead, "New", { silent: true }); lead.nextFollowUp = todayISO(); touch(lead); save(); render(); toast("Moved to admission enquiries"); break;
@@ -1796,6 +1791,7 @@ document.addEventListener("change", e => {
   }
   if (el.dataset.field && drawerId) {
     const l = db.leads.find(x => x.id === drawerId); const f = el.dataset.field;
+    if (f === "nextFollowUp" && isOpen(l) && pastBlocked(el.value)) { toast(PAST_MSG); el.value = l.nextFollowUp || ""; return; }
     const FL = { nextFollowUp: "Next follow-up", visitDate: "Visit date", visitTime: "Visit time", transport: "Transport", assessmentDate: "Assessment date", feePaidDate: "Fee paid date", feeAmount: "Fee amount" };
     logAct(f === "assignedTo" ? "Assigned" : "Details updated", l, f === "assignedTo" ? (el.value || "Unassigned") : `${FL[f] || f}: ${el.value || "cleared"}`);
     l[f] = el.value;
@@ -1844,6 +1840,7 @@ render();
 setSync(syncOn() ? "ok" : "local");
 if (syncOn()) { pull(true); }
 else if (local.syncUrl) showLogin("login");
+if (typeof handleShare === "function") handleShare();   // a message shared from WhatsApp (Android)
 mq.addEventListener("change", () => render());
 setInterval(() => { if (syncOn() && !document.hidden) pull(); }, 45000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && syncOn()) pull(); });

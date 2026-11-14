@@ -1,7 +1,7 @@
 // Offline support: keeps the app shell available without internet.
 // Enquiry data is never cached here (it lives in the browser storage / Google Sheet).
-const CACHE = "enquiry-tracker-v5";
-const SHELL = ["./", "index.html", "app.js", "reports.js", "enquiry.html", "manual.html", "manifest.json", "icon.svg",
+const CACHE = "enquiry-tracker-v7";
+const SHELL = ["./", "index.html", "app.js", "reports.js", "paste.js", "enquiry.html", "manual.html", "icon-192.png", "icon-512.png", "manifest.json", "icon.svg",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"];
 
