@@ -505,7 +505,7 @@ function renderReports(){
     <select data-ui="rep" style="width:auto" class="noprint" aria-label="Report period">${pr.map(([v, l]) => `<option value="${v}" ${ui.rep === v ? "selected" : ""}>${l}</option>`).join("")}</select>
     ${ui.rep === "custom" ? `<input type="date" data-ui="repFrom" value="${c.from}" style="width:auto" class="noprint"><input type="date" data-ui="repTo" value="${c.to}" style="width:auto" class="noprint">` : ""}
     ${can("export") ? `<button class="btn noprint" data-act="rep-export">Excel</button><button class="btn noprint desk-only" data-act="rep-export-all">All reports to Excel</button>` : ""}
-    <button class="btn noprint" data-act="print">PDF</button></div>
+    <button class="btn noprint" data-act="rep-pdf" title="Download this report as a designed PDF">PDF</button><button class="btn noprint" data-act="rep-pdf-all" title="All 14 reports in one PDF with a contents page">All reports PDF</button></div>
   <div class="reptabs noprint" role="tablist">${REPORT_TABS.map(([k, l]) => `<button role="tab" aria-selected="${k === ui.repTab}" class="${k === ui.repTab ? "on" : ""}" data-act="rep-tab" data-tab="${k}">${l}</button>`).join("")}</div>
   <div class="printhead"><b>${esc(db.settings.schoolName)}</b> – ${esc(tabName)} report · ${rangeLabel(c)} · printed ${fmtDate(todayISO())}</div>
   <p class="hint noprint" style="margin:0 0 10px">${rangeLabel(c)}${c.hasPrev ? ` · compared with the ${c.prevLabel}` : ""} · click any underlined number to see the families behind it.</p>
@@ -548,12 +548,144 @@ function exportReports(all){
   render();
 }
 
+/* ---------- PDF: a designed A4 document (one tab or all reports) ---------- */
+const PDF_CSS = `
+@page{size:A4;margin:14mm 12mm 16mm;
+  @bottom-left{content:__FOOT__;font:8pt Inter,Arial,sans-serif;color:#7a8599}
+  @bottom-right{content:"Page " counter(page) " of " counter(pages);font:8pt Inter,Arial,sans-serif;color:#7a8599}}
+:root{--accent:#2557e8;--accent-2:#6d4ae8;--text:#0f172a;--muted:#5f6b80;--border:#e2e7f0;--surface:#fff;--surface2:#f4f6fb;
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--good:#0b8a3e;--bad:#c62f2f;--ok:#16a34a;--warn:#c27803;--danger:#c62f2f;color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff;color:var(--text);font:9.5pt/1.45 Inter,"Segoe UI",Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.cover{border-radius:14px;padding:18px 20px;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;gap:16px;align-items:center;margin-bottom:14px}
+.cover .lg{width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,.18);display:grid;place-items:center;flex:0 0 auto}
+.cover h1{margin:0;font-size:19pt;letter-spacing:-.02em;line-height:1.15}
+.cover .sub{opacity:.9;font-size:9.5pt;margin-top:3px}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 16px}
+.meta div{border:1px solid var(--border);border-radius:10px;padding:7px 10px;background:var(--surface2)}
+.meta b{display:block;font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.toc{columns:2;column-gap:28px}
+.toc div{display:flex;gap:8px;padding:4px 0;border-bottom:1px dotted var(--border);break-inside:avoid}
+.toc span{color:var(--accent);font-weight:700;min-width:18px}
+section.rep{break-before:page}
+section.rep.first{break-before:auto}
+.sechead{display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--accent);padding-bottom:6px;margin:0 0 12px}
+.sechead .n{color:#fff;background:var(--accent);border-radius:7px;padding:1px 8px;font-weight:700;font-size:10pt}
+.sechead h2{margin:0;font-size:15pt;letter-spacing:-.01em}
+.sechead .p{margin-left:auto;color:var(--muted);font-size:8.5pt}
+h2{font-size:11pt;margin:0 0 8px}
+.hint{color:var(--muted);font-size:8pt}
+p{margin:6px 0}
+.grid{display:grid;gap:8px}
+.kpis{grid-template-columns:repeat(4,1fr)}
+.two{grid-template-columns:1fr 1fr}
+.card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fff;break-inside:avoid;margin-bottom:8px}
+.grid .card{margin-bottom:0}
+.rc{margin-top:8px}
+.kpi{padding:8px 10px;background:var(--surface2)}
+.kpi .l{font-size:7.5pt;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.kpi .v{font-size:15pt;font-weight:700;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:8pt;font-weight:500}
+.kpi .dl{font-size:7.5pt;margin-top:2px}
+.delta{font-weight:700}.delta.good{color:var(--good)}.delta.bad{color:var(--bad)}.delta.flat{color:var(--muted)}
+.muted{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:8.5pt;margin:4px 0;break-inside:auto}
+thead{display:table-header-group}
+tr{break-inside:avoid}
+th{background:var(--surface2);color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:7pt;text-align:left;padding:6px 7px;border-bottom:1px solid var(--border)}
+td{padding:5px 7px;border-bottom:1px solid var(--border);vertical-align:top}
+tbody tr:nth-child(even) td{background:#fafbfd}
+.bars .row{display:grid;grid-template-columns:115px 1fr auto;align-items:center;gap:8px;margin:4px 0;font-size:8.5pt}
+.bars .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bars .row b .muted{font-weight:500}
+.bars .row b .muted::before{content:"· "}
+.track{background:var(--surface2);border-radius:999px;height:8px;overflow:hidden}
+.fill{height:100%;border-radius:999px}
+.chart svg{width:100%;height:auto;display:block}
+.chart .cg{stroke:var(--border);stroke-width:1}.chart .ca{stroke:#94a3b8;stroke-width:1}.chart .ct{fill:var(--muted);font-size:11px}
+.legend{display:flex;gap:12px;font-size:8pt;color:var(--muted);margin-bottom:4px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:7.5pt;font-weight:600;white-space:nowrap}
+.heat{display:inline-block;padding:0 5px;border-radius:5px;font-size:6.5pt;font-weight:700;text-transform:uppercase}
+.heat.hot{background:#fee2e2;color:#b91c1c}.heat.warm{background:#fef3c7;color:#92400e}.heat.cold{background:#e0f2fe;color:#075985}
+.tag{display:inline-block;padding:0 6px;border-radius:5px;font-size:7.5pt;background:var(--surface2);border:1px solid var(--border);color:var(--muted)}
+.due-over{color:var(--danger);font-weight:600}.due-today{color:var(--warn);font-weight:600}
+.empty{padding:10px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:8px}
+.warnbox{background:#fef3c7;color:#92400e;border-radius:8px;padding:6px 8px}
+table.heatmap{border-collapse:separate;border-spacing:2px;width:auto}
+table.heatmap th{background:none;text-transform:none;padding:1px 3px;text-align:center;border:0}
+table.heatmap td.hm{width:24px;height:18px;padding:0;text-align:center;font-size:7pt;border:0;border-radius:3px}
+.hmkey{display:inline-block;width:70px;height:8px;border-radius:5px;background:linear-gradient(90deg,#dbe8fa,var(--s1))}
+.calwrap{overflow:visible}
+.av{display:none}
+.endnote{margin-top:14px;padding-top:8px;border-top:1px solid var(--border);color:var(--muted);font-size:7.5pt}
+@media screen{body{max-width:820px;margin:20px auto;padding:0 16px}}`;
+
+function cleanForPdf(html){
+  const d = document.createElement("div"); d.innerHTML = html;
+  d.querySelectorAll(".noprint, button, details, .reptabs, script").forEach(e => e.remove());
+  d.querySelectorAll("a").forEach(a => a.replaceWith(document.createTextNode(a.textContent)));
+  d.querySelectorAll("input").forEach(i => i.replaceWith(document.createTextNode(i.type === "checkbox" ? (i.checked ? "✓" : "") : i.value)));
+  d.querySelectorAll("select").forEach(s => s.replaceWith(document.createTextNode(s.options[s.selectedIndex] ? s.options[s.selectedIndex].text : "")));
+  d.querySelectorAll(".printonly").forEach(e => e.remove());
+  return d.innerHTML;
+}
+function buildPdfDoc(all){
+  const c = repCtx(), s = db.settings;
+  const tabs = all ? REPORT_TABS : REPORT_TABS.filter(t => t[0] === ui.repTab);
+  const title = all ? "Admissions report pack" : `${tabs[0][1]} report`;
+  const period = rangeLabel(c), printed = new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  const foot = `"${String(s.schoolName || "").replace(/"/g, "")} · ${title} · ${period} · Confidential – contains parent data"`;
+  const logo = `<svg width="30" height="30" viewBox="0 0 512 512"><path d="M256 140 116 210l140 70 140-70z" fill="#fff"/><path d="M172 250v68c0 38 168 38 168 0v-68l-84 42z" fill="#fff" opacity=".85"/><path d="M380 218v82" stroke="#fff" stroke-width="16" stroke-linecap="round"/><circle cx="380" cy="314" r="16" fill="#fbbf24"/></svg>`;
+  const sections = tabs.map(([k, label], i) => {
+    let body; try { body = cleanForPdf(REPORTS[k](c)); } catch (e) { body = `<div class="warnbox">This report could not be built: ${esc(e.message)}</div>`; }
+    return `<section class="rep ${i === 0 && !all ? "first" : ""}"><div class="sechead">${all ? `<span class="n">${i + 1}</span>` : ""}<h2>${esc(label)}</h2><span class="p">${esc(period)}</span></div>${body}</section>`;
+  }).join("");
+  drillReg.clear();   // links made while building the PDF are not needed
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(s.schoolName)} – ${esc(title)} – ${esc(todayISO())}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>${PDF_CSS.replace("__FOOT__", foot)}</style></head><body>
+  <div class="cover"><div class="lg">${logo}</div><div><h1>${esc(s.schoolName)}</h1><div class="sub">${esc(title)}</div></div></div>
+  <div class="meta"><div><b>Period</b>${esc(period)}</div><div><b>Compared with</b>${c.hasPrev ? esc("the " + c.prevLabel) : "—"}</div><div><b>Prepared by</b>${esc(meName() || "—")}</div><div><b>Printed</b>${esc(printed)}</div></div>
+  ${all ? `<div class="card"><h2>Contents</h2><div class="toc">${tabs.map(([, l], i) => `<div><span>${i + 1}</span>${esc(l)}</div>`).join("")}</div></div>` : ""}
+  ${sections}
+  <div class="endnote">Figures come from the enquiries, follow-ups, visits, stages and fees recorded in the Admission Enquiry Tracker. ▲ / ▼ compare with the previous period of the same length. This document contains parents' personal data – keep it within the school.</div>
+  </body></html>`;
+}
+function printPdf(all){
+  const html = buildPdfDoc(all);
+  const label = all ? "All reports" : (REPORT_TABS.find(t => t[0] === ui.repTab) || [])[1] + " report";
+  logAct("Printed / saved PDF", null, `${label} (${rangeLabel(repCtx())})`); save();
+  render();  // keep the on-screen drill-down links working
+  if (isMobile()) {            // phones: open the document in a new tab, it prints itself
+    const w = window.open("", "_blank");
+    if (!w) { toast("Allow pop-ups to save the PDF"); return; }
+    w.document.write(html.replace("</body>", `<script>(document.fonts?document.fonts.ready:Promise.resolve()).then(function(){setTimeout(function(){print()},300)})<\/script></body>`));
+    w.document.close();
+    return;
+  }
+  document.getElementById("pdf-frame")?.remove();
+  const f = document.createElement("iframe");
+  f.id = "pdf-frame"; f.setAttribute("aria-hidden", "true");
+  f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(f);
+  const d = f.contentDocument; d.open(); d.write(html); d.close();
+  const go = () => {
+    const oldTitle = document.title; document.title = d.title;   // suggested PDF file name
+    setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(() => { document.title = oldTitle; }, 1000); }, 150);
+  };
+  (f.contentDocument.fonts && f.contentDocument.fonts.ready ? f.contentDocument.fonts.ready : Promise.resolve()).then(() => setTimeout(go, 200));
+  toast("Choose “Save as PDF” as the printer");
+}
+
 /* ---------- report-specific actions (called from app.js click/change handlers) ---------- */
 function reportAction(act, el){
   switch (act) {
     case "rep-tab": ui.repTab = el.dataset.tab; render(); window.scrollTo(0, 0); return true;
     case "rep-export": exportReports(false); return true;
     case "rep-export-all": exportReports(true); return true;
+    case "rep-pdf": printPdf(false); return true;
+    case "rep-pdf-all": printPdf(true); return true;
     case "drill": drillDialog(el.dataset.k); return true;
     case "drill-open": closeDialog(); openDrawer(el.dataset.id); return true;
     case "drill-export": drillExport(el.dataset.k); return true;
